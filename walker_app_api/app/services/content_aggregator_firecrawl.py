@@ -128,7 +128,7 @@ class ContentAggregatorFirecrawl:
         Main aggregation method that fetches content from all sources.
         Returns statistics about the aggregation process.
         """
-        logger.info("🚀 Starting unified content aggregation with Firecrawl...")
+        logger.info("Starting unified content aggregation with Firecrawl...")
         start_time = datetime.now()
         
         results = {
@@ -179,13 +179,13 @@ class ContentAggregatorFirecrawl:
         results['completed_at'] = end_time.isoformat()
         results['duration_seconds'] = (end_time - start_time).total_seconds()
         
-        logger.info(f"✅ Aggregation completed: {results['total_new_items']} new items in {results['duration_seconds']:.2f}s")
+        logger.info(f"Aggregation completed: {results['total_new_items']} new items in {results['duration_seconds']:.2f}s")
         
         return results
     
     async def _aggregate_rss_feeds(self, db: Session) -> Dict[str, Any]:
         """Aggregate content from RSS feeds."""
-        logger.info("📡 Aggregating RSS feeds...")
+        logger.info("Aggregating RSS feeds...")
         
         items_added = 0
         items_processed = 0
@@ -216,7 +216,7 @@ class ContentAggregatorFirecrawl:
                     
                     logger.info(f"Processed {feed_name}: Found {len(result)} items, added {source_items_added} new.")
         
-        logger.info(f"✅ RSS aggregation: {items_added} new items from {len(self.rss_sources)} feeds")
+        logger.info(f"RSS aggregation: {items_added} new items from {len(self.rss_sources)} feeds")
         
         return {
             'items_processed': items_processed,
@@ -226,7 +226,7 @@ class ContentAggregatorFirecrawl:
     
     async def _aggregate_youtube_channels(self, db: Session) -> Dict[str, Any]:
         """Aggregate content from YouTube channels via RSS."""
-        logger.info("📺 Aggregating YouTube channels...")
+        logger.info("Aggregating YouTube channels...")
         
         items_added = 0
         items_processed = 0
@@ -285,7 +285,7 @@ class ContentAggregatorFirecrawl:
                 logger.error(f"Error processing YouTube channel {channel['name']}: {e}")
                 continue
         
-        logger.info(f"✅ YouTube aggregation: {items_added} new videos from {len(self.youtube_channels)} channels")
+        logger.info(f"YouTube aggregation: {items_added} new videos from {len(self.youtube_channels)} channels")
         
         return {
             'items_processed': items_processed,
@@ -295,7 +295,7 @@ class ContentAggregatorFirecrawl:
     
     async def _aggregate_web_scrapers_firecrawl(self, db: Session) -> Dict[str, Any]:
         """Aggregate content from web scrapers using Firecrawl."""
-        logger.info("🌐 Aggregating web scrapers with Firecrawl...")
+        logger.info("Aggregating web scrapers with Firecrawl...")
         
         items_added = 0
         items_processed = 0
@@ -352,7 +352,7 @@ class ContentAggregatorFirecrawl:
                 logger.error(f"Error processing web scraper {source['name']}: {e}")
                 continue
         
-        logger.info(f"✅ Web scraper aggregation with Firecrawl: {items_added} new items")
+        logger.info(f"Web scraper aggregation with Firecrawl: {items_added} new items")
         
         return {
             'items_processed': items_processed,

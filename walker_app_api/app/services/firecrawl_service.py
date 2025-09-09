@@ -29,7 +29,7 @@ class FirecrawlService:
         else:
             try:
                 self.firecrawl = FirecrawlApp(api_key=self.api_key)
-                logger.info("✅ Firecrawl service initialized successfully")
+                logger.info("Firecrawl service initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize Firecrawl: {e}")
                 self.firecrawl = None

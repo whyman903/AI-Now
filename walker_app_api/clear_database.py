@@ -18,7 +18,7 @@ def clear_content_items():
     
     print("Connecting to the database...")
     if not settings.DATABASE_URL:
-        print("❌ DATABASE_URL not configured.")
+        print("ERROR: DATABASE_URL not configured.")
         return
 
     try:
@@ -30,13 +30,13 @@ def clear_content_items():
             result = db.execute(text("DELETE FROM content_items;"))
             db.commit()
             
-            print(f"✅ Successfully deleted {result.rowcount} items.")
+            print(f"SUCCESS: Successfully deleted {result.rowcount} items.")
             
     except Exception as e:
-        print(f"❌ An error occurred: {e}")
+        print(f"ERROR: An error occurred: {e}")
 
 if __name__ == "__main__":
-    print("⚠️  This script will permanently delete all content from the database.")
+    print("WARNING: This script will permanently delete all content from the database.")
     confirm = input("Are you sure you want to continue? (yes/no): ")
     if confirm.lower() == 'yes':
         clear_content_items()

@@ -23,7 +23,7 @@ from app.db.models import ContentItem
 
 async def main():
     """Run comprehensive content aggregation"""
-    print("🚀 Starting unified content aggregation...")
+    print("Starting unified content aggregation...")
     print("=" * 70)
     
     aggregator = get_aggregator_firecrawl()
@@ -32,7 +32,7 @@ async def main():
         results = await aggregator.aggregate_all_content()
         
         # Display results as a pretty-printed JSON object for clarity
-        print("\n📊 Aggregation Results Summary:")
+        print("\nAggregation Results Summary:")
         print(json.dumps(results, indent=2))
         
         # Final database stats
@@ -43,7 +43,7 @@ async def main():
                 ContentItem.thumbnail_url.isnot(None)
             ).count()
             
-            print(f"\n📊 Final Database Stats:")
+            print(f"\nFinal Database Stats:")
             print(f"   Total items: {total_items}")
             print(f"   Items with thumbnails: {items_with_thumbnails}")
             if total_items > 0:
@@ -51,7 +51,7 @@ async def main():
                 print(f"   Overall thumbnail coverage: {thumbnail_percentage:.1f}%")
             
             # Show recent items by source
-            print(f"\n📰 Recent Content Sources:")
+            print(f"\nRecent Content Sources:")
             from sqlalchemy import text
             recent_sources = db.execute(text("""
                 SELECT 
@@ -72,10 +72,10 @@ async def main():
         finally:
             db.close()
         
-        print(f"\n✅ Unified aggregation completed successfully!")
+        print(f"\nUnified aggregation completed successfully!")
         
     except Exception as e:
-        print(f"❌ Error during aggregation: {e}")
+        print(f"ERROR: Error during aggregation: {e}")
         import traceback
         traceback.print_exc()
     

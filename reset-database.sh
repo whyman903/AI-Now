@@ -1,16 +1,16 @@
 #!/bin/bash
 
-echo "🗄️ Resetting database schema for TrendCurate..."
+echo "Resetting database schema for TrendCurate..."
 
 # Stop any running services
-echo "🛑 Stopping services..."
+echo "Stopping services..."
 pkill -f "python main.py" 2>/dev/null || true
 pkill -f "tsx.*server/index.ts" 2>/dev/null || true
 sleep 2
 
 # Function to reset database
 reset_database() {
-    echo "🔄 Resetting database schema..."
+    echo "Resetting database schema..."
     
     cd TrendCurate
     
@@ -31,8 +31,8 @@ export default defineConfig({
 EOF
 
     # Force push schema (this will drop and recreate tables)
-    echo "⚠️  This will DROP existing tables and recreate them!"
-    echo "🔄 Pushing clean schema..."
+    echo "WARNING: This will DROP existing tables and recreate them!"
+    echo "Pushing clean schema..."
     
     npx drizzle-kit push --config=drizzle.config.temp.ts --force
     
@@ -44,15 +44,15 @@ EOF
 
 # Check if .env exists
 if [ ! -f "TrendCurate/.env" ]; then
-    echo "❌ No .env file found in TrendCurate/"
-    echo "📝 Please create TrendCurate/.env with DATABASE_URL"
+    echo "ERROR: No .env file found in TrendCurate/"
+    echo "Please create TrendCurate/.env with DATABASE_URL"
     exit 1
 fi
 
 # Reset the database
 reset_database
 
-echo "✅ Database schema reset complete!"
+echo "SUCCESS: Database schema reset complete!"
 echo ""
-echo "🚀 Now you can start the services:"
+echo "Now you can start the services:"
 echo "   ./start-services.sh"
