@@ -9,8 +9,8 @@
     "start": "vite preview",
     "check": "tsc",
     "setup": "npm install",
-    "backend:dev": "cd ../walker_app_api && python main.py",
-    "backend:install": "cd ../walker_app_api && pip install -r requirements.txt"
+    "backend:dev": "cd ../walker_app_api && uv run python main.py",
+    "backend:install": "cd ../walker_app_api && uv sync"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -27,25 +27,22 @@ start_python_backend() {
     
     if check_port 8000; then
         cd walker_app_api
-        if [ ! -f "requirements.txt" ]; then
-            echo "ERROR: requirements.txt not found in walker_app_api/"
+        if [ ! -f "pyproject.toml" ]; then
+            echo "ERROR: pyproject.toml not found in walker_app_api/"
             exit 1
         fi
         
-        # Create virtual environment if it doesn't exist
-        if [ ! -d "venv" ]; then
-            echo "Creating Python virtual environment..."
-            python3 -m venv venv
+        # Create virtual environment if it doesn't exist using uv
+        if [ ! -d ".venv" ]; then
+            echo "Creating Python virtual environment with uv..."
+            uv venv
         fi
         
-        echo "Activating virtual environment..."
-        source venv/bin/activate
+        echo "Installing Python dependencies with uv..."
+        uv sync
         
-        echo "Installing Python dependencies..."
-        pip install -r requirements.txt
-        
-        echo "Running Python backend..."
-        python main.py &
+        echo "Running Python backend with uv..."
+        uv run python main.py &
         PYTHON_PID=$!
         echo "SUCCESS: Python backend started (PID: $PYTHON_PID)"
         cd ..
@@ -162,6 +159,12 @@ main() {
     # Check if Python is available
     if ! command -v python &> /dev/null; then
         echo "ERROR: Python not found. Please install Python 3.9+"
+        exit 1
+    fi
+    
+    # Check if uv is available
+    if ! command -v uv &> /dev/null; then
+        echo "ERROR: uv not found. Please install uv: curl -LsSf https://astral.sh/uv/install.sh | sh"
         exit 1
     fi
     
