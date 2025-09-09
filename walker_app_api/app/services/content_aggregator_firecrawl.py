@@ -135,6 +135,7 @@ class ContentAggregatorFirecrawl:
             'started_at': start_time.isoformat(),
             'sources': {},
             'total_new_items': 0,
+            'total_items_updated': 0,
             'items_with_thumbnails': 0,
             'errors': []
         }
@@ -163,6 +164,7 @@ class ContentAggregatorFirecrawl:
                 else:
                     results['sources'][source_name] = result
                     results['total_new_items'] += result.get('items_added', 0)
+                    results['total_items_updated'] += result.get('items_updated', 0)
                     results['items_with_thumbnails'] += result.get('items_with_thumbnails', 0)
             
             db.commit()
@@ -190,6 +192,7 @@ class ContentAggregatorFirecrawl:
         items_added = 0
         items_processed = 0
         items_with_thumbnails = 0
+        items_updated = 0
         
         # Process feeds concurrently in batches
         batch_size = 5
@@ -212,6 +215,7 @@ class ContentAggregatorFirecrawl:
                     persist_stats = await self._persist_items(db, result)
                     items_added += persist_stats['items_added']
                     items_with_thumbnails += persist_stats['items_with_thumbnails']
+                    items_updated += persist_stats.get('items_updated', 0)
                     source_items_added = persist_stats['items_added']
                     
                     logger.info(f"Processed {feed_name}: Found {len(result)} items, added {source_items_added} new.")
@@ -221,7 +225,8 @@ class ContentAggregatorFirecrawl:
         return {
             'items_processed': items_processed,
             'items_added': items_added,
-            'items_with_thumbnails': items_with_thumbnails
+            'items_with_thumbnails': items_with_thumbnails,
+            'items_updated': items_updated
         }
     
     async def _aggregate_youtube_channels(self, db: Session) -> Dict[str, Any]:
@@ -231,6 +236,7 @@ class ContentAggregatorFirecrawl:
         items_added = 0
         items_processed = 0
         items_with_thumbnails = 0
+        items_updated = 0
         
         for channel in self.youtube_channels:
             try:
@@ -278,6 +284,7 @@ class ContentAggregatorFirecrawl:
                 persist_stats = await self._persist_items(db, channel_items)
                 items_added += persist_stats['items_added']
                 items_with_thumbnails += persist_stats['items_with_thumbnails']
+                items_updated += persist_stats.get('items_updated', 0)
 
                 logger.info(f"Processed {channel['name']}: Found {len(feed.entries)} videos, added {persist_stats['items_added']} new.")
                 
@@ -290,7 +297,8 @@ class ContentAggregatorFirecrawl:
         return {
             'items_processed': items_processed,
             'items_added': items_added,
-            'items_with_thumbnails': items_with_thumbnails
+            'items_with_thumbnails': items_with_thumbnails,
+            'items_updated': items_updated
         }
     
     async def _aggregate_web_scrapers_firecrawl(self, db: Session) -> Dict[str, Any]:
@@ -300,6 +308,8 @@ class ContentAggregatorFirecrawl:
         items_added = 0
         items_processed = 0
         items_with_thumbnails = 0
+        items_updated = 0
+        updated_hf_papers = []
         
         # Get Firecrawl service
         firecrawl_service = get_firecrawl_service()
@@ -324,6 +334,24 @@ class ContentAggregatorFirecrawl:
                 # Normalize metadata and persist in one go
                 normalized = []
                 for article_data in articles:
+                    # Normalize common metadata
+                    meta = {
+                        'source_name': article_data['source_name'],
+                        'source': self._extract_source_from_url(article_data['source_url']),
+                        'category': article_data['category'],
+                        'extraction_method': 'firecrawl',
+                    }
+
+                    # Include rank and scraped_date for trending papers (Hugging Face)
+                    if article_data.get('rank') is not None:
+                        meta['rank'] = article_data.get('rank')
+                    # Frontend expects 'scraped_date' to group by most recent snapshot
+                    if article_data.get('scraped_at'):
+                        try:
+                            meta['scraped_date'] = article_data['scraped_at'].isoformat()
+                        except Exception:
+                            meta['scraped_date'] = str(article_data.get('scraped_at'))
+
                     normalized.append({
                         'type': article_data.get('content_type', 'article'),
                         'title': article_data['title'],
@@ -332,19 +360,16 @@ class ContentAggregatorFirecrawl:
                         'author': article_data.get('author', ''),
                         'published_at': article_data['published_at'],
                         'thumbnail_url': article_data.get('thumbnail_url'),
-                        'meta_data': {
-                            'source_name': article_data['source_name'],
-                            'source': self._extract_source_from_url(article_data['source_url']),
-                            'category': article_data['category'],
-                            'rank': article_data.get('rank'),
-                            'extraction_method': 'firecrawl',
-                            'scraped_at': article_data['scraped_at'].isoformat() if article_data.get('scraped_at') else None,
-                        },
+                        'meta_data': meta,
                     })
 
                 persist_stats = await self._persist_items(db, normalized)
                 items_added += persist_stats['items_added']
                 items_with_thumbnails += persist_stats['items_with_thumbnails']
+                items_updated += persist_stats.get('items_updated', 0)
+                # Capture details for HF papers that were updated for better observability
+                if source['name'] == 'Hugging Face Papers' and persist_stats.get('updated_details'):
+                    updated_hf_papers.extend(persist_stats['updated_details'])
 
                 logger.info(f"Processed {source['name']}: Found {len(articles)} items, added {persist_stats['items_added']} new.")
                 
@@ -352,12 +377,20 @@ class ContentAggregatorFirecrawl:
                 logger.error(f"Error processing web scraper {source['name']}: {e}")
                 continue
         
-        logger.info(f"Web scraper aggregation with Firecrawl: {items_added} new items")
+        logger.info(f"Web scraper aggregation with Firecrawl: {items_added} new items, {items_updated} updated")
+        if updated_hf_papers:
+            try:
+                logger.info("Updated Hugging Face ranks:")
+                for d in updated_hf_papers[:10]:
+                    logger.info(f"  rank {d.get('rank')} · {d.get('title')} · date {d.get('scraped_date')}")
+            except Exception:
+                pass
         
         return {
             'items_processed': items_processed,
             'items_added': items_added,
-            'items_with_thumbnails': items_with_thumbnails
+            'items_with_thumbnails': items_with_thumbnails,
+            'items_updated': items_updated
         }
     
     # Helper methods (simplified versions of the originals)
@@ -456,8 +489,8 @@ class ContentAggregatorFirecrawl:
             return "Unknown"
 
     async def _persist_items(self, db: Session, items: List[Dict[str, Any]]) -> Dict[str, int]:
-        """Deduplicate by source_url, enrich thumbnails if missing, and add to session.
-        Returns counts for added items and how many with thumbnails.
+        """Upsert items by source_url. For existing Hugging Face papers, update rank/scraped_date.
+        Also enrich thumbnails for new items. Returns counts for added, updated, and with thumbnails.
         """
         # Normalize and drop invalid items
         candidates = [i for i in items if i.get('source_url') and i.get('title')]
@@ -465,13 +498,70 @@ class ContentAggregatorFirecrawl:
             return {'items_added': 0, 'items_with_thumbnails': 0}
 
         urls = [i['source_url'] for i in candidates]
-        # Fetch existing URLs in one query
-        existing = set(
-            u for (u,) in db.query(ContentItem.source_url).filter(ContentItem.source_url.in_(urls)).all()
-        )
-        new_items = [i for i in candidates if i['source_url'] not in existing]
+        # Fetch existing items keyed by URL
+        existing_items = {
+            ci.source_url: ci for ci in db.query(ContentItem).filter(ContentItem.source_url.in_(urls)).all()
+        }
+
+        # First, handle updates for existing items (especially HF trending)
+        items_updated = 0
+        updated_details = []
+        for item in candidates:
+            existing = existing_items.get(item['source_url'])
+            if not existing:
+                continue
+
+            try:
+                # Only update if it's a research paper from Hugging Face Papers
+                is_hf_paper = False
+                try:
+                    is_hf_paper = (
+                        (item.get('type') == 'research_paper') and
+                        (item.get('meta_data') or {}).get('source_name') == 'Hugging Face Papers'
+                    )
+                except Exception:
+                    is_hf_paper = False
+
+                if is_hf_paper:
+                    existing_meta = existing.meta_data or {}
+                    incoming_meta = item.get('meta_data') or {}
+                    # Update rank and scraped_date snapshot
+                    changed = False
+                    if 'rank' in incoming_meta and existing_meta.get('rank') != incoming_meta['rank']:
+                        existing_meta['rank'] = incoming_meta['rank']
+                        changed = True
+                    if 'scraped_date' in incoming_meta and existing_meta.get('scraped_date') != incoming_meta['scraped_date']:
+                        existing_meta['scraped_date'] = incoming_meta['scraped_date']
+                        changed = True
+                    # Keep source_name consistent
+                    if 'source_name' in incoming_meta:
+                        existing_meta['source_name'] = incoming_meta['source_name']
+                    # Update author/title if they changed slightly
+                    if item.get('author') and item['author'] != (existing.author or ''):
+                        existing.author = item['author']
+                        changed = True
+                    if item.get('title') and item['title'] != existing.title:
+                        existing.title = item['title']
+                        changed = True
+                    # Persist back
+                    if changed:
+                        existing.meta_data = existing_meta
+                        items_updated += 1
+                        try:
+                            updated_details.append({
+                                'title': existing.title,
+                                'rank': existing_meta.get('rank'),
+                                'scraped_date': existing_meta.get('scraped_date')
+                            })
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.debug(f"Failed updating existing item metadata for {item['source_url']}: {e}")
+
+        # Determine which are new
+        new_items = [i for i in candidates if i['source_url'] not in existing_items]
         if not new_items:
-            return {'items_added': 0, 'items_with_thumbnails': 0}
+            return {'items_added': 0, 'items_with_thumbnails': 0, 'items_updated': items_updated, 'updated_details': updated_details}
 
         # Enrich thumbnails concurrently for those missing
         sem = asyncio.Semaphore(5)
@@ -493,7 +583,7 @@ class ContentAggregatorFirecrawl:
             i_clean = {k: v for k, v in i.items() if k != 'scraped_at'}
             db.add(ContentItem(**i_clean))
 
-        return {'items_added': len(new_items), 'items_with_thumbnails': with_thumbs}
+        return {'items_added': len(new_items), 'items_with_thumbnails': with_thumbs, 'items_updated': items_updated, 'updated_details': updated_details}
 
 
 # Singleton instance

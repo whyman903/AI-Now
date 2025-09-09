@@ -34,23 +34,29 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
   }
 
   // Separate papers from regular content
-  const allPapers = items.filter(item => 
-    item.metadata?.source_name === 'Hugging Face Papers'
-  );
-  
-  const latestScrapeDate: string | null = allPapers.reduce<string | null>((latest, paper) => {
-    const scrapeDate = paper.metadata?.scraped_date;
-    if (!scrapeDate) return latest;
-    return !latest || scrapeDate > latest ? scrapeDate : latest;
-  }, null);
-  
-  const papers = allPapers
-    .filter(paper => {
-      if (!paper.metadata?.scraped_date || !latestScrapeDate) return false;
-      const paperDate = paper.metadata.scraped_date.split('T')[0];
-      const latestDate = latestScrapeDate.split('T')[0];
-      return paperDate === latestDate;
-    })
+  // Prefer the API-provided research_paper list (already ordered),
+  // but fall back to latest scraped_date grouping if needed.
+  const apiPapers = items.filter(item => item.type === 'research_paper');
+  const allPapers = items.filter(item => item.metadata?.source_name === 'Hugging Face Papers');
+
+  const latestScrapeDate: string | null = (apiPapers.length > 0 ? apiPapers : allPapers)
+    .reduce<string | null>((latest, paper) => {
+      const scrapeDate = paper.metadata?.scraped_date;
+      if (!scrapeDate) return latest;
+      return !latest || scrapeDate > latest ? scrapeDate : latest;
+    }, null);
+
+  const papers = (apiPapers.length > 0
+    ? apiPapers
+    : allPapers
+        .filter(paper => {
+          if (!paper.metadata?.scraped_date || !latestScrapeDate) return false;
+          const paperDate = paper.metadata.scraped_date.split('T')[0];
+          const latestDate = latestScrapeDate.split('T')[0];
+          return paperDate === latestDate;
+        })
+    )
+    .filter(p => p.metadata?.source_name === 'Hugging Face Papers')
     .sort((a, b) => (a.metadata?.rank || 999) - (b.metadata?.rank || 999));
   
   const regularContent = items.filter(item => 

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import func, asc
+from sqlalchemy import func, asc, desc
 from app.db.base import get_db
 from app.db.models import ContentItem
 
@@ -34,8 +34,10 @@ def get_content(
     
     # For research papers, we want to order by the rank from HuggingFace
     if content_type == 'research_paper':
+        # Order by the latest scrape snapshot first (NULLS LAST), then by rank within that snapshot (NULLS LAST)
         query = base_query.order_by(
-            asc(ContentItem.meta_data['rank'].as_float())
+            desc(ContentItem.meta_data['scraped_date'].as_string()).nullslast(),
+            asc(ContentItem.meta_data['rank'].as_float()).nullslast()
         )
     else:
         # Create a subquery that assigns a row number to each item, partitioned by type
