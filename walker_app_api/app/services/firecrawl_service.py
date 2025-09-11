@@ -7,7 +7,7 @@ import asyncio
 import logging
 import os
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from firecrawl import FirecrawlApp
 import httpx
 
@@ -163,8 +163,8 @@ class FirecrawlService:
                             'source_name': source_config['name'],
                             'category': source_config['category'],
                             'content_type': 'research_paper',
-                            'published_at': datetime.now(),
-                            'scraped_at': datetime.now(),
+                            'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                            'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None),
                             'rank': idx
                         })
                 return articles
@@ -198,8 +198,8 @@ class FirecrawlService:
                         'source_name': source_config['name'],
                         'category': source_config['category'],
                         'content_type': 'research_paper',
-                        'published_at': datetime.now(),
-                        'scraped_at': datetime.now(),
+                        'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                        'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None),
                         'rank': idx
                     }
                     
@@ -251,8 +251,8 @@ class FirecrawlService:
                         'source_name': source_config['name'],
                         'category': source_config['category'],
                         'content_type': 'article',
-                        'published_at': datetime.now(),
-                        'scraped_at': datetime.now()
+                        'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                        'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None)
                     }
                     
                     articles.append(article_data)
@@ -289,8 +289,8 @@ class FirecrawlService:
                         'source_name': source_config['name'],
                         'category': source_config['category'],
                         'content_type': 'article',
-                        'published_at': datetime.now(),
-                        'scraped_at': datetime.now()
+                        'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                        'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None)
                     })
                 return articles
             
@@ -319,8 +319,8 @@ class FirecrawlService:
                         'source_name': source_config['name'],
                         'category': source_config['category'],
                         'content_type': 'article',
-                        'published_at': datetime.now(),
-                        'scraped_at': datetime.now()
+                        'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                        'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None)
                     }
                     
                     articles.append(article_data)
@@ -364,8 +364,8 @@ class FirecrawlService:
                     'source_name': source_config['name'],
                     'category': source_config['category'],
                     'content_type': 'article',
-                    'published_at': datetime.now(),
-                    'scraped_at': datetime.now()
+                    'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                    'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None)
                 }
                 
                 articles.append(article_data)

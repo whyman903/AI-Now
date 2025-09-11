@@ -1,86 +1,65 @@
 #!/usr/bin/env python3
-"""
-Run unified content aggregation - combines RSS feeds and web scraping with comprehensive thumbnails
-No sample data or fallbacks - only real content from verified sources
-"""
-
 import asyncio
 import sys
 import os
 import json
 from dotenv import load_dotenv
+import httpx
 
-# Construct the path to the .env file which is in the same directory as the script
+# Load .env next to this script
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path=dotenv_path)
 
+# Ensure app imports work
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from app.services.content_aggregator_firecrawl import get_aggregator_firecrawl
-from sqlalchemy.orm import Session
-from app.db.base import engine
+from app.db.base import create_tables, SessionLocal, ensure_content_items_compat_schema
 from app.db.models import ContentItem
+from app.services.content_aggregator_firecrawl import get_aggregator_firecrawl
+
 
 async def main():
-    """Run comprehensive content aggregation"""
     print("Starting unified content aggregation...")
     print("=" * 70)
-    
-    aggregator = get_aggregator_firecrawl()
+
+    # Ensure tables exist (idempotent)
     try:
-        # Run unified aggregation
+        create_tables()
+        ensure_content_items_compat_schema()
+    except Exception as e:
+        print(f"WARN: create_tables/ensure schema failed or skipped: {e}")
+
+    # Prepare shared HTTP client and inject
+    client = httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={'User-Agent': 'TrendCurate/1.0'})
+    aggregator = get_aggregator_firecrawl()
+    aggregator.set_http_client(client)
+
+    try:
         results = await aggregator.aggregate_all_content()
-        
-        # Display results as a pretty-printed JSON object for clarity
         print("\nAggregation Results Summary:")
         print(json.dumps(results, indent=2))
-        
+
         # Final database stats
-        db = Session(engine)
+        db = SessionLocal()
         try:
             total_items = db.query(ContentItem).count()
-            items_with_thumbnails = db.query(ContentItem).filter(
-                ContentItem.thumbnail_url.isnot(None)
-            ).count()
-            
-            print(f"\nFinal Database Stats:")
+            with_thumbs = db.query(ContentItem).filter(ContentItem.thumbnail_url.isnot(None)).count()
+            print("\nFinal Database Stats:")
             print(f"   Total items: {total_items}")
-            print(f"   Items with thumbnails: {items_with_thumbnails}")
-            if total_items > 0:
-                thumbnail_percentage = (items_with_thumbnails / total_items) * 100
-                print(f"   Overall thumbnail coverage: {thumbnail_percentage:.1f}%")
-            
-            # Show recent items by source
-            print(f"\nRecent Content Sources:")
-            from sqlalchemy import text
-            recent_sources = db.execute(text("""
-                SELECT 
-                    metadata->>'source_name' as source_name,
-                    COUNT(*) as item_count,
-                    COUNT(thumbnail_url) as thumbnail_count
-                FROM content_items 
-                WHERE created_at >= NOW() - INTERVAL '24 hours'
-                AND metadata->>'source_name' IS NOT NULL
-                GROUP BY metadata->>'source_name'
-                ORDER BY item_count DESC
-            """)).fetchall()
-            
-            for row in recent_sources:
-                source_name, item_count, thumb_count = row
-                print(f"   {source_name}: {item_count} items ({thumb_count} thumbnails)")
-            
+            print(f"   Items with thumbnails: {with_thumbs}")
+            if total_items:
+                print(f"   Overall thumbnail coverage: {with_thumbs/total_items*100:.1f}%")
         finally:
             db.close()
-        
-        print(f"\nUnified aggregation completed successfully!")
-        
+
+        print("\nUnified aggregation completed successfully!")
     except Exception as e:
         print(f"ERROR: Error during aggregation: {e}")
         import traceback
         traceback.print_exc()
-    
     finally:
-        pass
+        await client.aclose()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

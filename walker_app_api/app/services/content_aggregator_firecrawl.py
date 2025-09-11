@@ -8,13 +8,13 @@ import httpx
 import feedparser
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
-from sqlalchemy.orm import Session
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+from collections import OrderedDict, defaultdict
 
-from app.db.base import engine
-from app.db.models import ContentItem
+from app.db.base import SessionLocal
+from app.db.models import ContentItem, FeedState
 from app.services.firecrawl_service import get_firecrawl_service
 
 logger = logging.getLogger(__name__)
@@ -31,11 +31,13 @@ class ContentAggregatorFirecrawl:
     
     def __init__(self):
         """Initialize the content aggregator with all sources."""
-        self.client = httpx.AsyncClient(
-            timeout=30.0,
-            follow_redirects=True,
-            headers={'User-Agent': 'Mozilla/5.0 (compatible; ContentAggregator/1.0)'}
-        )
+        self.client: Optional[httpx.AsyncClient] = None
+        # Per-host concurrency limit
+        self._per_host_limit = 4
+        self._host_limiters: Dict[str, asyncio.Semaphore] = defaultdict(lambda: asyncio.Semaphore(self._per_host_limit))
+        # Small in-memory LRU cache for thumbnails
+        self._thumb_cache: OrderedDict[str, Optional[str]] = OrderedDict()
+        self._thumb_cache_size = 256
         
         # Initialize all content sources
         self._initialize_rss_sources()
@@ -60,6 +62,56 @@ class ContentAggregatorFirecrawl:
             # Startup/Business
             {"name": "Sequoia Capital", "url": "https://www.sequoiacap.com/feed/", "category": "startup", "type": "blog"},
         ]
+
+    def set_http_client(self, client: httpx.AsyncClient) -> None:
+        """Inject a shared AsyncClient managed by app lifespan."""
+        self.client = client
+
+    # -------------------- Utilities --------------------
+
+    def _utcnow_naive(self) -> datetime:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def canonicalize(self, url: str) -> str:
+        """Canonicalize a URL for dedupe: lower host/scheme, strip fragment, sort query, drop trackers."""
+        try:
+            if not url:
+                return url
+            parsed = urlparse(url)
+            scheme = (parsed.scheme or 'https').lower()
+            netloc = parsed.netloc.lower()
+            # Drop default ports
+            if netloc.endswith(':80') and scheme == 'http':
+                netloc = netloc[:-3]
+            if netloc.endswith(':443') and scheme == 'https':
+                netloc = netloc[:-4]
+            path = parsed.path or '/'
+            # Normalize trailing slash (keep only root slash)
+            if path != '/' and path.endswith('/'):
+                path = path[:-1]
+            # Strip fragment
+            fragment = ''
+            # Clean query params
+            tracking = {
+                'utm_source','utm_medium','utm_campaign','utm_term','utm_content',
+                'gclid','fbclid','igshid','mc_cid','mc_eid','ref','ref_', 'yclid'
+            }
+            q = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=False) if k not in tracking]
+            q.sort()
+            query = urlencode(q)
+            return urlunparse((scheme, netloc, path, '', query, fragment))
+        except Exception:
+            return url
+
+    async def _get(self, url: str, headers: Optional[Dict[str, str]] = None) -> httpx.Response:
+        if not self.client:
+            # Fallback ephemeral client, in case not injected (should be injected at app startup)
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as temp:
+                return await temp.get(url, headers=headers)
+        host = urlparse(url).netloc.lower()
+        sem = self._host_limiters[host]
+        async with sem:
+            return await self.client.get(url, headers=headers)
         
     def _initialize_youtube_sources(self):
         """Initialize YouTube channel sources."""
@@ -129,7 +181,7 @@ class ContentAggregatorFirecrawl:
         Returns statistics about the aggregation process.
         """
         logger.info("Starting unified content aggregation with Firecrawl...")
-        start_time = datetime.now()
+        start_time = self._utcnow_naive()
         
         results = {
             'started_at': start_time.isoformat(),
@@ -140,44 +192,33 @@ class ContentAggregatorFirecrawl:
             'errors': []
         }
         
-        db = Session(engine)
-        try:
-            # Run all aggregation tasks concurrently
-            tasks = [
-                self._aggregate_rss_feeds(db),
-                self._aggregate_youtube_channels(db),
-                self._aggregate_web_scrapers_firecrawl(db)
-            ]
-            
-            source_results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results
-            source_names = ['rss_feeds', 'youtube_channels', 'web_scrapers']
-            for i, result in enumerate(source_results):
-                source_name = source_names[i]
-                
-                if isinstance(result, Exception):
-                    error_msg = f"Error in {source_name}: {str(result)}"
-                    logger.error(error_msg)
-                    results['errors'].append(error_msg)
-                    results['sources'][source_name] = {'error': str(result)}
-                else:
-                    results['sources'][source_name] = result
-                    results['total_new_items'] += result.get('items_added', 0)
-                    results['total_items_updated'] += result.get('items_updated', 0)
-                    results['items_with_thumbnails'] += result.get('items_with_thumbnails', 0)
-            
-            db.commit()
-            
-        except Exception as e:
-            logger.error(f"Error in unified aggregation: {e}")
-            db.rollback()
-            results['errors'].append(str(e))
-        finally:
-            db.close()
+        # Run all aggregation tasks concurrently
+        tasks = [
+            self._aggregate_rss_feeds(),
+            self._aggregate_youtube_channels(),
+            self._aggregate_web_scrapers_firecrawl()
+        ]
+
+        source_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results
+        source_names = ['rss_feeds', 'youtube_channels', 'web_scrapers']
+        for i, result in enumerate(source_results):
+            source_name = source_names[i]
+
+            if isinstance(result, Exception):
+                error_msg = f"Error in {source_name}: {str(result)}"
+                logger.error(error_msg)
+                results['errors'].append(error_msg)
+                results['sources'][source_name] = {'error': str(result)}
+            else:
+                results['sources'][source_name] = result
+                results['total_new_items'] += result.get('items_added', 0)
+                results['total_items_updated'] += result.get('items_updated', 0)
+                results['items_with_thumbnails'] += result.get('items_with_thumbnails', 0)
         
         # Calculate final statistics
-        end_time = datetime.now()
+        end_time = self._utcnow_naive()
         results['completed_at'] = end_time.isoformat()
         results['duration_seconds'] = (end_time - start_time).total_seconds()
         
@@ -185,7 +226,7 @@ class ContentAggregatorFirecrawl:
         
         return results
     
-    async def _aggregate_rss_feeds(self, db: Session) -> Dict[str, Any]:
+    async def _aggregate_rss_feeds(self) -> Dict[str, Any]:
         """Aggregate content from RSS feeds."""
         logger.info("Aggregating RSS feeds...")
         
@@ -195,7 +236,7 @@ class ContentAggregatorFirecrawl:
         items_updated = 0
         
         # Process feeds concurrently in batches
-        batch_size = 5
+        batch_size = 6
         for i in range(0, len(self.rss_sources), batch_size):
             batch = self.rss_sources[i:i + batch_size]
             tasks = [self._process_rss_feed(feed) for feed in batch]
@@ -212,7 +253,7 @@ class ContentAggregatorFirecrawl:
                 if isinstance(result, list) and result:
                     items_processed += len(result)
                     # Persist in one go (handles dedupe + thumbnail enrichment)
-                    persist_stats = await self._persist_items(db, result)
+                    persist_stats = await self._persist_items(result)
                     items_added += persist_stats['items_added']
                     items_with_thumbnails += persist_stats['items_with_thumbnails']
                     items_updated += persist_stats.get('items_updated', 0)
@@ -229,7 +270,7 @@ class ContentAggregatorFirecrawl:
             'items_updated': items_updated
         }
     
-    async def _aggregate_youtube_channels(self, db: Session) -> Dict[str, Any]:
+    async def _aggregate_youtube_channels(self) -> Dict[str, Any]:
         """Aggregate content from YouTube channels via RSS."""
         logger.info("Aggregating YouTube channels...")
         
@@ -243,7 +284,7 @@ class ContentAggregatorFirecrawl:
                 # YouTube RSS feed URL
                 rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel['channel_id']}"
                 
-                response = await self.client.get(rss_url)
+                response = await self._get(rss_url)
                 if response.status_code != 200:
                     logger.error(f"Failed to fetch {channel['name']}: HTTP {response.status_code}")
                     continue
@@ -253,18 +294,31 @@ class ContentAggregatorFirecrawl:
                 channel_items: List[Dict[str, Any]] = []
 
                 for entry in feed.entries[:10]:  # Limit per channel
-                    # Extract video ID and build normalized item
-                    video_id = entry.link.split('v=')[-1] if 'v=' in entry.link else ''
-                    # hqdefault exists more reliably than maxresdefault
-                    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg" if video_id else None
+                    # Extract video ID from Atom
+                    video_id = getattr(entry, 'yt_videoid', None)
+                    if not video_id and hasattr(entry, 'id') and isinstance(entry.id, str):
+                        # entry.id often like 'yt:video:VIDEO_ID'
+                        parts = entry.id.split(':')
+                        if parts and parts[-1]:
+                            video_id = parts[-1]
+                    # Thumbnails via media if provided
+                    thumbnail_url = None
+                    try:
+                        thumbs = getattr(entry, 'media_thumbnail', None) or getattr(entry, 'media_thumbnails', None)
+                        if thumbs and isinstance(thumbs, list) and thumbs[0].get('url'):
+                            thumbnail_url = thumbs[0]['url']
+                    except Exception:
+                        pass
+                    if not thumbnail_url and video_id:
+                        # hqdefault is reliable
+                        thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
                     published_at = (
-                        datetime(*entry.published_parsed[:6])
-                        if hasattr(entry, 'published_parsed') and entry.published_parsed
-                        else datetime.now()
+                        datetime(*entry.published_parsed[:6]) if getattr(entry, 'published_parsed', None)
+                        else self._utcnow_naive()
                     )
 
                     channel_items.append({
-                        'type': 'video',
+                        'type': 'youtube_video',
                         'title': entry.title,
                         'content': (entry.summary[:500] if hasattr(entry, 'summary') else ''),
                         'source_url': entry.link,
@@ -281,7 +335,7 @@ class ContentAggregatorFirecrawl:
                     })
 
                 items_processed += len(channel_items)
-                persist_stats = await self._persist_items(db, channel_items)
+                persist_stats = await self._persist_items(channel_items)
                 items_added += persist_stats['items_added']
                 items_with_thumbnails += persist_stats['items_with_thumbnails']
                 items_updated += persist_stats.get('items_updated', 0)
@@ -301,7 +355,7 @@ class ContentAggregatorFirecrawl:
             'items_updated': items_updated
         }
     
-    async def _aggregate_web_scrapers_firecrawl(self, db: Session) -> Dict[str, Any]:
+    async def _aggregate_web_scrapers_firecrawl(self) -> Dict[str, Any]:
         """Aggregate content from web scrapers using Firecrawl."""
         logger.info("Aggregating web scrapers with Firecrawl...")
         
@@ -363,7 +417,7 @@ class ContentAggregatorFirecrawl:
                         'meta_data': meta,
                     })
 
-                persist_stats = await self._persist_items(db, normalized)
+                persist_stats = await self._persist_items(normalized)
                 items_added += persist_stats['items_added']
                 items_with_thumbnails += persist_stats['items_with_thumbnails']
                 items_updated += persist_stats.get('items_updated', 0)
@@ -398,8 +452,39 @@ class ContentAggregatorFirecrawl:
     async def _process_rss_feed(self, feed_config: Dict[str, str]) -> List[Dict[str, Any]]:
         """Process a single RSS feed."""
         try:
-            response = await self.client.get(feed_config['url'])
+            # Conditional GET using stored ETag/Last-Modified
+            from app.db.base import SessionLocal
+            db = SessionLocal()
+            headers: Dict[str, str] = {}
+            try:
+                state = db.query(FeedState).filter(FeedState.feed_url == feed_config['url']).first()
+                if state:
+                    if state.etag:
+                        headers['If-None-Match'] = state.etag
+                    if state.last_modified:
+                        headers['If-Modified-Since'] = state.last_modified
+            except Exception:
+                pass
+            finally:
+                db.close()
+
+            response = await self._get(feed_config['url'], headers=headers)
             if response.status_code != 200:
+                if response.status_code == 304:
+                    # Not modified
+                    try:
+                        db = SessionLocal()
+                        st = db.query(FeedState).filter(FeedState.feed_url == feed_config['url']).first()
+                        if not st:
+                            st = FeedState(feed_url=feed_config['url'])
+                            db.add(st)
+                        st.last_status = '304'
+                        db.commit()
+                    except Exception:
+                        pass
+                    finally:
+                        db.close()
+                    return []
                 raise Exception(f"HTTP {response.status_code}")
             
             feed = feedparser.parse(response.text)
@@ -407,7 +492,7 @@ class ContentAggregatorFirecrawl:
             
             for entry in feed.entries[:15]:  # Limit per feed
                 # Parse published date
-                published_at = datetime.now()
+                published_at = self._utcnow_naive()
                 if hasattr(entry, 'published_parsed') and entry.published_parsed:
                     try:
                         published_at = datetime(*entry.published_parsed[:6])
@@ -418,6 +503,15 @@ class ContentAggregatorFirecrawl:
                 if rss_type == 'blog':
                     rss_type = 'article'
 
+                # thumbnail from media if present
+                thumb = None
+                try:
+                    thumbs = getattr(entry, 'media_thumbnail', None) or getattr(entry, 'media_thumbnails', None)
+                    if thumbs and isinstance(thumbs, list) and thumbs[0].get('url'):
+                        thumb = thumbs[0]['url']
+                except Exception:
+                    pass
+
                 item_data = {
                     'type': rss_type,
                     'title': entry.title,
@@ -425,15 +519,32 @@ class ContentAggregatorFirecrawl:
                     'source_url': entry.link,
                     'author': feed_config['name'],
                     'published_at': published_at,
+                    'thumbnail_url': thumb,
                     'meta_data': {
                         'source_name': feed_config['name'],
                         'category': feed_config['category'],
                         'extraction_method': 'rss',
-                        'scraped_at': datetime.now().isoformat(),
+                        'scraped_at': self._utcnow_naive().isoformat(),
                     }
                 }
                 
                 items.append(item_data)
+
+            # Update feed state with new validators
+            try:
+                db = SessionLocal()
+                st = db.query(FeedState).filter(FeedState.feed_url == feed_config['url']).first()
+                if not st:
+                    st = FeedState(feed_url=feed_config['url'])
+                    db.add(st)
+                st.etag = response.headers.get('ETag') or st.etag
+                st.last_modified = response.headers.get('Last-Modified') or st.last_modified
+                st.last_status = str(response.status_code)
+                db.commit()
+            except Exception:
+                pass
+            finally:
+                db.close()
             
             return items
             
@@ -443,8 +554,15 @@ class ContentAggregatorFirecrawl:
     
     async def _extract_thumbnail(self, url: str) -> Optional[str]:
         """Extract thumbnail from a URL."""
+        # LRU cache check
+        if url in self._thumb_cache:
+            # move to end (recently used)
+            val = self._thumb_cache.pop(url)
+            self._thumb_cache[url] = val
+            return val
+
         try:
-            response = await self.client.get(url)
+            response = await self._get(url)
             if response.status_code != 200:
                 return None
             
@@ -460,8 +578,17 @@ class ContentAggregatorFirecrawl:
             for tag in meta_tags:
                 meta = soup.find('meta', property=tag) or soup.find('meta', name=tag)
                 if meta and meta.get('content'):
-                    return meta['content']
+                    thumb = meta['content']
+                    # update cache
+                    self._thumb_cache[url] = thumb
+                    # enforce size
+                    if len(self._thumb_cache) > self._thumb_cache_size:
+                        self._thumb_cache.popitem(last=False)
+                    return thumb
             
+            self._thumb_cache[url] = None
+            if len(self._thumb_cache) > self._thumb_cache_size:
+                self._thumb_cache.popitem(last=False)
             return None
             
         except Exception as e:
@@ -488,7 +615,7 @@ class ContentAggregatorFirecrawl:
         except:
             return "Unknown"
 
-    async def _persist_items(self, db: Session, items: List[Dict[str, Any]]) -> Dict[str, int]:
+    async def _persist_items(self, items: List[Dict[str, Any]]) -> Dict[str, int]:
         """Upsert items by source_url. For existing Hugging Face papers, update rank/scraped_date.
         Also enrich thumbnails for new items. Returns counts for added, updated, and with thumbnails.
         """
@@ -497,17 +624,41 @@ class ContentAggregatorFirecrawl:
         if not candidates:
             return {'items_added': 0, 'items_with_thumbnails': 0}
 
+        # Compute normalized URLs and prepare lookup keys
+        for i in candidates:
+            i['normalized_url'] = self.canonicalize(i['source_url'])
+
         urls = [i['source_url'] for i in candidates]
-        # Fetch existing items keyed by URL
-        existing_items = {
-            ci.source_url: ci for ci in db.query(ContentItem).filter(ContentItem.source_url.in_(urls)).all()
-        }
+        norm_urls = [i['normalized_url'] for i in candidates]
+
+        db = SessionLocal()
+        # Detect if normalized_url column exists to stay compatible with older DBs
+        try:
+            from sqlalchemy import inspect as _sa_inspect
+            inspector = _sa_inspect(db.get_bind())
+            cols = {c['name'] for c in inspector.get_columns('content_items')}
+            has_norm_col = 'normalized_url' in cols
+        except Exception:
+            has_norm_col = False
+
+        # Fetch existing items keyed by normalized_url and source_url
+        existing_items_by_norm = {}
+        if has_norm_col:
+            try:
+                existing_items_by_norm = {
+                    ci.normalized_url: ci
+                    for ci in db.query(ContentItem).filter(ContentItem.normalized_url.in_(norm_urls)).all()
+                    if ci.normalized_url
+                }
+            except Exception:
+                existing_items_by_norm = {}
+        existing_items_by_url = {ci.source_url: ci for ci in db.query(ContentItem).filter(ContentItem.source_url.in_(urls)).all()}
 
         # First, handle updates for existing items (especially HF trending)
         items_updated = 0
         updated_details = []
         for item in candidates:
-            existing = existing_items.get(item['source_url'])
+            existing = existing_items_by_norm.get(item['normalized_url']) or existing_items_by_url.get(item['source_url'])
             if not existing:
                 continue
 
@@ -559,8 +710,10 @@ class ContentAggregatorFirecrawl:
                 logger.debug(f"Failed updating existing item metadata for {item['source_url']}: {e}")
 
         # Determine which are new
-        new_items = [i for i in candidates if i['source_url'] not in existing_items]
+        new_items = [i for i in candidates if (i['normalized_url'] not in existing_items_by_norm and i['source_url'] not in existing_items_by_url)]
         if not new_items:
+            db.commit()
+            db.close()
             return {'items_added': 0, 'items_with_thumbnails': 0, 'items_updated': items_updated, 'updated_details': updated_details}
 
         # Enrich thumbnails concurrently for those missing
@@ -581,7 +734,29 @@ class ContentAggregatorFirecrawl:
                 with_thumbs += 1
             # Remove any transient field not in model
             i_clean = {k: v for k, v in i.items() if k != 'scraped_at'}
-            db.add(ContentItem(**i_clean))
+            if not has_norm_col:
+                i_clean.pop('normalized_url', None)
+            try:
+                # Attempt Postgres upsert on normalized_url if available
+                bind = db.get_bind()
+                if bind and bind.dialect.name == 'postgresql' and has_norm_col and i_clean.get('normalized_url'):
+                    from sqlalchemy.dialects.postgresql import insert
+                    stmt = insert(ContentItem.__table__).values(**i_clean)
+                    stmt = stmt.on_conflict_do_nothing(index_elements=['normalized_url'])
+                    db.execute(stmt)
+                else:
+                    db.add(ContentItem(**i_clean))
+            except Exception:
+                # Fallback to add (may raise on duplicates if constraint exists)
+                try:
+                    db.add(ContentItem(**i_clean))
+                except Exception:
+                    pass
+
+        try:
+            db.commit()
+        finally:
+            db.close()
 
         return {'items_added': len(new_items), 'items_with_thumbnails': with_thumbs, 'items_updated': items_updated, 'updated_details': updated_details}
 

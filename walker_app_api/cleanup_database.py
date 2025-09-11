@@ -18,11 +18,9 @@ def cleanup_test_data():
     try:
         print("Starting database cleanup...")
         
-        # Count items before cleanup
         total_before = db.query(ContentItem).count()
         print(f"Total items before cleanup: {total_before}")
         
-        # 1. Remove items with unknown source (likely test data)
         unknown_source_items = []
         all_items = db.query(ContentItem).all()
         
@@ -36,7 +34,6 @@ def cleanup_test_data():
         for item in unknown_source_items:
             db.delete(item)
         
-        # 2. Remove items with test patterns in title or content
         test_patterns = ['sample', 'test', 'example', 'demo', 'lorem ipsum', 'placeholder']
         test_items = []
         
@@ -45,13 +42,10 @@ def cleanup_test_data():
             title_lower = item.title.lower() if item.title else ''
             content_lower = item.content.lower() if item.content else ''
             
-            # Check for test patterns
             for pattern in test_patterns:
                 if (pattern in title_lower or pattern in content_lower):
-                    # Skip if it's legitimate content that happens to contain these words
-                    # (e.g., research papers about "demo" applications)
                     if pattern == 'demo' and item.meta_data and item.meta_data.get('source') == 'arxiv':
-                        continue  # Keep arXiv papers that mention demo
+                        continue
                     test_items.append(item)
                     break
         
@@ -59,7 +53,6 @@ def cleanup_test_data():
         for item in test_items:
             db.delete(item)
         
-        # 3. Remove items with obviously fake URLs
         fake_url_patterns = [
             'youtube.com/watch?v=sample',
             'example.com',
@@ -80,11 +73,8 @@ def cleanup_test_data():
         for item in fake_url_items:
             db.delete(item)
         
-        # 4. Remove duplicates (same source_url)
         print("Removing duplicate items...")
         duplicates_removed = 0
-        
-        # Find all unique source URLs
         unique_urls = set()
         all_remaining = db.query(ContentItem).all()
         
@@ -96,11 +86,8 @@ def cleanup_test_data():
                 unique_urls.add(item.source_url)
         
         print(f"Removed {duplicates_removed} duplicate items")
-        
-        # Commit all changes
         db.commit()
         
-        # Count items after cleanup  
         total_after = db.query(ContentItem).count()
         removed_count = total_before - total_after
         
@@ -109,7 +96,6 @@ def cleanup_test_data():
         print(f"Items after: {total_after}")
         print(f"Items removed: {removed_count}")
         
-        # Show remaining content by source
         print(f"\nRemaining content by source:")
         from collections import Counter
         sources = Counter()

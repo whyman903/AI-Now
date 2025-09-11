@@ -184,8 +184,9 @@ pids
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
-# Alembic
-alembic.ini
+# Alembic - DO NOT ignore alembic.ini and migration files!
+# Only ignore __pycache__ in alembic directory
+alembic/__pycache__/
 
 # pytest
 .pytest_cache/

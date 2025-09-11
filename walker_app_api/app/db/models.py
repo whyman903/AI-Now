@@ -3,7 +3,7 @@ Database models that exactly match the Node.js schema.
 This ensures both backends can work with the same database structure.
 """
 
-from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Index
+from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -19,12 +19,11 @@ class User(Base):
     first_name = Column("first_name", String)
     last_name = Column("last_name", String) 
     profile_image_url = Column("profile_image_url", String)
-    interests = Column(Text, nullable=False, server_default='{}')  # Text array stored as string
+    interests = Column(Text, nullable=False, server_default='{}')
     onboarding_completed = Column("onboarding_completed", Boolean, default=False)
     created_at = Column("created_at", DateTime, server_default=func.now())
     updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
     
-    # Relationships
     interactions = relationship("UserInteraction", back_populates="user")
     bookmarks = relationship("UserBookmark", back_populates="user")
     bookmark_folders = relationship("BookmarkFolder", back_populates="user")
@@ -35,28 +34,38 @@ class ContentItem(Base):
     __tablename__ = "content_items"
     
     id = Column(String, primary_key=True, server_default=func.gen_random_uuid())
-    type = Column(String, nullable=False, index=True)  # 'article', 'podcast', 'research_paper', 'youtube_video', 'twitter_post'
+    type = Column(String, nullable=False, index=True)
     title = Column(Text, nullable=False)
     content = Column(Text)
     ai_summary = Column("ai_summary", Text)
     source_url = Column("source_url", Text, nullable=False)
+    normalized_url = Column("normalized_url", Text, index=True, nullable=True)
     author = Column(Text)
     published_at = Column("published_at", DateTime, index=True)
     thumbnail_url = Column("thumbnail_url", Text)
-    meta_data = Column("metadata", JSON)  # Store type-specific data as JSONB
-    embedding = Column(Text)  # Store as JSON string for now
+    meta_data = Column("metadata", JSON)
+    embedding = Column(Text)
     created_at = Column("created_at", DateTime, server_default=func.now())
     updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
     
-    # Relationships
     interactions = relationship("UserInteraction", back_populates="content_item")
     bookmarks = relationship("UserBookmark", back_populates="content_item")
-    
-    # Indexes for performance
     __table_args__ = (
         Index('idx_content_items_type', 'type'),
         Index('idx_content_items_published', 'published_at'),
+        UniqueConstraint('normalized_url', name='uq_content_items_normalized_url'),
     )
+
+
+class FeedState(Base):
+    """Track ETag/Last-Modified and status for RSS feeds."""
+    __tablename__ = "feed_states"
+
+    feed_url = Column(String, primary_key=True)
+    etag = Column(String, nullable=True)
+    last_modified = Column(String, nullable=True)
+    last_checked = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    last_status = Column(String, nullable=True)
 
 
 class UserInteraction(Base):
@@ -66,14 +75,11 @@ class UserInteraction(Base):
     id = Column(String, primary_key=True, server_default=func.gen_random_uuid())
     user_id = Column("user_id", String, ForeignKey("users.id"), nullable=False)
     content_item_id = Column("content_item_id", String, ForeignKey("content_items.id"), nullable=False)
-    interaction_type = Column("interaction_type", String, nullable=False)  # 'like', 'skip', 'bookmark', 'view'
+    interaction_type = Column("interaction_type", String, nullable=False)
     created_at = Column("created_at", DateTime, server_default=func.now())
     
-    # Relationships
     user = relationship("User", back_populates="interactions")
     content_item = relationship("ContentItem", back_populates="interactions")
-    
-    # Indexes
     __table_args__ = (
         Index('idx_user_interactions_user_id', 'user_id'),
         Index('idx_user_interactions_content_id', 'content_item_id'),
@@ -88,11 +94,10 @@ class BookmarkFolder(Base):
     user_id = Column("user_id", String, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(Text)
-    color = Column(String, default="#3b82f6")  # Default blue color
+    color = Column(String, default="#3b82f6")
     created_at = Column("created_at", DateTime, server_default=func.now())
     updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
     
-    # Relationships
     user = relationship("User", back_populates="bookmark_folders")
     bookmarks = relationship("UserBookmark", back_populates="folder")
 
@@ -108,12 +113,9 @@ class UserBookmark(Base):
     notes = Column(Text)
     created_at = Column("created_at", DateTime, server_default=func.now())
     
-    # Relationships
     user = relationship("User", back_populates="bookmarks")
     content_item = relationship("ContentItem", back_populates="bookmarks")
     folder = relationship("BookmarkFolder", back_populates="bookmarks")
-    
-    # Indexes
     __table_args__ = (
         Index('idx_user_bookmarks_user_id', 'user_id'),
         Index('idx_user_bookmarks_content_id', 'content_item_id'),

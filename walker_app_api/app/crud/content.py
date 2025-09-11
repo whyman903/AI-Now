@@ -9,13 +9,11 @@ class ContentCRUD:
     @staticmethod
     def create_content(db: Session, content_data: dict) -> ContentItem:
         """Create content in database"""
-        # Check if content already exists by source URL
         existing = db.query(ContentItem).filter(
             ContentItem.source_url == content_data.get('source_url')
         ).first()
         
         if existing:
-            # Update existing content
             for key, value in content_data.items():
                 if hasattr(existing, key):
                     setattr(existing, key, value)
@@ -23,7 +21,6 @@ class ContentCRUD:
             db.refresh(existing)
             return existing
         
-        # Create new content
         db_content = ContentItem(**content_data)
         db.add(db_content)
         db.commit()
