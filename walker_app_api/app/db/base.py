@@ -1,7 +1,43 @@
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import make_url
 from app.core.config import settings
+import socket
+
+
+def _log_db_dns_info():
+    """Best-effort logging of DB hostname and DNS resolution.
+
+    Does not raise; only prints helpful diagnostics once at import time.
+    """
+    try:
+        url = make_url(settings.DATABASE_URL)
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"DB-CONFIG: Unable to parse DATABASE_URL: {e}")
+        return
+
+    # Only meaningful for networked DBs like Postgres
+    if not url.host or not url.drivername.startswith("postgresql"):
+        print("DB-CONFIG: Non-network DB or no host; skipping DNS check.")
+        return
+
+    host = url.host
+    port = url.port or 5432
+    print(f"DB-CONFIG: Using DB host '{host}' on port {port} (driver={url.drivername}).")
+
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+        addrs = sorted({ai[4][0] for ai in infos})
+        if addrs:
+            print(f"DB-CONFIG: Host resolves to: {', '.join(addrs)}")
+        else:
+            print("DB-CONFIG: DNS returned no addresses.")
+    except Exception as e:
+        print(f"DB-CONFIG: DNS resolution failed for '{host}': {e}")
+
+
+_log_db_dns_info()
 
 engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

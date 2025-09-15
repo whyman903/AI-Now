@@ -48,7 +48,130 @@ class FirecrawlService:
         if not self.firecrawl:
             logger.debug("Firecrawl not initialized. Skipping scrape.")
             return None
-            
+
+    def _to_utc_naive(self, dt: datetime) -> datetime:
+        """Convert potentially timezone-aware datetimes to UTC naive for DB storage consistency."""
+        try:
+            if dt.tzinfo is None:
+                # Assume naive datetimes are already UTC
+                return dt
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def _parse_datetime_candidate(self, value: Any) -> Optional[datetime]:
+        """Parse a date/time candidate value into a datetime. Supports ISO strings and epochs."""
+        if value is None:
+            return None
+        try:
+            # Numeric epochs (seconds or ms)
+            if isinstance(value, (int, float)):
+                # Heuristic: treat 13+ digit as ms
+                if value > 10_000_000_000:  # > ~2286-11-20 in seconds; so this is likely ms
+                    value = value / 1000.0
+                return datetime.fromtimestamp(float(value), tz=timezone.utc)
+            # Strings
+            if isinstance(value, str):
+                s = value.strip()
+                if not s:
+                    return None
+                # Some sites emit like '2024-09-15T10:30:00Z' or '2024-09-15 10:30:00+00:00'
+                try:
+                    from dateutil import parser as dateparser  # lazy import
+                    dt = dateparser.parse(s)
+                    if dt is None:
+                        return None
+                    # If parsed without tz, assume UTC (safer for server-side semantics)
+                    if dt.tzinfo is None:
+                        return dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except Exception:
+                    return None
+        except Exception:
+            return None
+        return None
+
+    def _extract_published_datetime(self, scraped_data: Dict[str, Any]) -> Optional[datetime]:
+        """
+        Try to extract a published datetime from Firecrawl result via metadata, JSON-LD, or HTML meta tags.
+        Returns a UTC-naive datetime suitable for DB storage, or None if not found.
+        """
+        # 1) Directly from Firecrawl metadata
+        metadata: Dict[str, Any] = scraped_data.get('metadata', {}) or {}
+        candidate_keys = [
+            # Common
+            'published', 'published_at', 'publishedAt', 'date', 'datePublished', 'date_published',
+            'publish_date', 'pubDate', 'timestamp', 'time', 'article:published_time', 'og:published_time',
+            'dateCreated', 'dateModified', 'dc:date', 'dc.date', 'dcterms:created', 'release_date'
+        ]
+        # Firecrawl may flatten meta tags into metadata with keys like 'og:published_time'
+        for key in candidate_keys:
+            if key in metadata:
+                dt = self._parse_datetime_candidate(metadata.get(key))
+                if dt:
+                    return self._to_utc_naive(dt)
+
+        # 2) JSON-LD scripts
+        try:
+            html = scraped_data.get('html') or ''
+            if html:
+                from bs4 import BeautifulSoup
+                import json
+                soup = BeautifulSoup(html, 'html.parser')
+                for script in soup.find_all('script', type=lambda t: t and 'ld+json' in t):
+                    try:
+                        data = json.loads(script.string or '')
+                    except Exception:
+                        continue
+                    # Normalize to list
+                    objs = data if isinstance(data, list) else [data]
+                    for obj in objs:
+                        if not isinstance(obj, dict):
+                            continue
+                        # Consider common article-like types
+                        typ = obj.get('@type')
+                        if isinstance(typ, list):
+                            types = {t.lower() for t in typ if isinstance(t, str)}
+                        else:
+                            types = {str(typ).lower()} if typ else set()
+                        if types.intersection({'article', 'newsarticle', 'blogposting', 'techarticle', 'report', 'webpage'}):
+                            for k in ('datePublished', 'dateCreated', 'dateModified', 'uploadDate'):
+                                if k in obj:
+                                    dt = self._parse_datetime_candidate(obj.get(k))
+                                    if dt:
+                                        return self._to_utc_naive(dt)
+        except Exception:
+            pass
+
+        # 3) HTML meta/time tags
+        try:
+            html = scraped_data.get('html') or ''
+            if html:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html, 'html.parser')
+                meta_selectors = [
+                    ('meta', {'property': 'article:published_time'}),
+                    ('meta', {'name': 'article:published_time'}),
+                    ('meta', {'property': 'og:published_time'}),
+                    ('meta', {'name': 'og:published_time'}),
+                    ('meta', {'name': 'pubdate'}),
+                    ('meta', {'name': 'publish_date'}),
+                    ('meta', {'name': 'date'}),
+                    ('meta', {'property': 'date'}),
+                    ('time', {'datetime': True}),
+                ]
+                for tag, attrs in meta_selectors:
+                    el = soup.find(tag, attrs=attrs)
+                    if el:
+                        value = el.get('content') or el.get('datetime')
+                        dt = self._parse_datetime_candidate(value)
+                        if dt:
+                            return self._to_utc_naive(dt)
+        except Exception:
+            pass
+
+        return None
+
         try:
             # Default options aligned with Firecrawl SDK
             # Include HTML so downstream extractors (e.g., Qwen, HF Papers) can parse structure.
@@ -163,7 +286,7 @@ class FirecrawlService:
                             'source_name': source_config['name'],
                             'category': source_config['category'],
                             'content_type': 'research_paper',
-                            'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                            'published_at': self._to_utc_naive(self._extract_published_datetime(scraped_data) or datetime.now(timezone.utc)),
                             'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None),
                             'rank': idx
                         })
@@ -191,6 +314,8 @@ class FirecrawlService:
                     authors_elem = paper.select_one('p.text-gray-600.text-sm')
                     authors = authors_elem.get_text(strip=True) if authors_elem else ""
                     
+                    # Try to determine published date from the page (listing often lacks per-item date)
+                    published_dt = self._extract_published_datetime(scraped_data) or datetime.now(timezone.utc)
                     article_data = {
                         'title': title,
                         'content': f"{description}\n\nAuthors: {authors}" if authors else description,
@@ -198,7 +323,7 @@ class FirecrawlService:
                         'source_name': source_config['name'],
                         'category': source_config['category'],
                         'content_type': 'research_paper',
-                        'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                        'published_at': self._to_utc_naive(published_dt),
                         'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None),
                         'rank': idx
                     }
@@ -244,6 +369,7 @@ class FirecrawlService:
                     if url.startswith('/'):
                         url = f"https://www.anthropic.com{url}"
                     
+                    published_dt = self._extract_published_datetime(scraped_data) or datetime.now(timezone.utc)
                     article_data = {
                         'title': clean_title,
                         'content': f"Article from {source_config['name']}",
@@ -251,7 +377,7 @@ class FirecrawlService:
                         'source_name': source_config['name'],
                         'category': source_config['category'],
                         'content_type': 'article',
-                        'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                        'published_at': self._to_utc_naive(published_dt),
                         'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None)
                     }
                     
@@ -282,6 +408,7 @@ class FirecrawlService:
                 md = scraped_data.get('markdown') or scraped_data.get('content') or ''
                 if md:
                     title = scraped_data.get('metadata', {}).get('title', 'Qwen Blog')
+                    published_dt = self._extract_published_datetime(scraped_data) or datetime.now(timezone.utc)
                     articles.append({
                         'title': title,
                         'content': md[:500],
@@ -289,7 +416,7 @@ class FirecrawlService:
                         'source_name': source_config['name'],
                         'category': source_config['category'],
                         'content_type': 'article',
-                        'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                        'published_at': self._to_utc_naive(published_dt),
                         'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None)
                     })
                 return articles
@@ -312,6 +439,7 @@ class FirecrawlService:
                     content_elem = article.select_one('div.entry-content p')
                     content = content_elem.get_text(strip=True) if content_elem else ""
                     
+                    published_dt = self._extract_published_datetime(scraped_data) or datetime.now(timezone.utc)
                     article_data = {
                         'title': title,
                         'content': content,
@@ -319,7 +447,7 @@ class FirecrawlService:
                         'source_name': source_config['name'],
                         'category': source_config['category'],
                         'content_type': 'article',
-                        'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                        'published_at': self._to_utc_naive(published_dt),
                         'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None)
                     }
                     
@@ -357,6 +485,7 @@ class FirecrawlService:
                 content_lines = [line for line in lines if line.strip() and not line.startswith('#')]
                 content = '\n'.join(content_lines[:5])  # First 5 non-header lines
                 
+                published_dt = self._extract_published_datetime(scraped_data) or datetime.now(timezone.utc)
                 article_data = {
                     'title': title,
                     'content': description or content[:500],  # Use description or first 500 chars
@@ -364,7 +493,7 @@ class FirecrawlService:
                     'source_name': source_config['name'],
                     'category': source_config['category'],
                     'content_type': 'article',
-                    'published_at': datetime.now(timezone.utc).replace(tzinfo=None),
+                    'published_at': self._to_utc_naive(published_dt),
                     'scraped_at': datetime.now(timezone.utc).replace(tzinfo=None)
                 }
                 

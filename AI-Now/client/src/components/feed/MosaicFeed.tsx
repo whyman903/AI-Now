@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -63,66 +63,70 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
     item.metadata?.source_name !== 'Hugging Face Papers'
   );
 
+  // Uniform checkerboard grid
+  const ROW_PX = 320; // fixed tile height
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const [sidebarHeight, setSidebarHeight] = useState<number>(0);
+  const [sidebarRows, setSidebarRows] = useState<number>(0);
 
-  // Define a new layout structure for items
-  type LayoutItem = {
-    item: ContentItemWithInteractions;
-    gridClass: string;
-    cardLayout: 'hero' | 'regular' | 'wide';
-  };
+  // simple matchMedia for lg breakpoint (Tailwind lg=1024px)
+  const [isLg, setIsLg] = useState<boolean>(() => window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setIsLg(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
-  const createStructuredLayout = (items: ContentItemWithInteractions[]): LayoutItem[] => {
-    const layoutItems: LayoutItem[] = [];
-    const youtubeVideos = items.filter(item => item.type === 'youtube_video');
-    const otherContent = items.filter(item => item.type !== 'youtube_video');
-
-    let otherIndex = 0;
-    // For each YouTube video, try to pair it with two articles
-    for (const video of youtubeVideos) {
-      // Add the YouTube video, spanning 2x2
-      layoutItems.push({
-        item: video,
-        gridClass: 'md:col-span-2 lg:col-span-2 lg:row-span-2',
-        cardLayout: 'hero'
-      });
-
-      // Add up to two articles to sit alongside the video
-      for (let i = 0; i < 2; i++) {
-        if (otherIndex < otherContent.length) {
-          layoutItems.push({
-            item: otherContent[otherIndex],
-            gridClass: 'lg:col-span-1 lg:row-span-1',
-            cardLayout: 'regular'
-          });
-          otherIndex++;
-        }
-      }
-    }
-
-    // Add any remaining articles at the end, filling the grid
-    while (otherIndex < otherContent.length) {
-      layoutItems.push({
-        item: otherContent[otherIndex],
-        gridClass: 'lg:col-span-1 lg:row-span-1',
-        cardLayout: 'regular'
-      });
-      otherIndex++;
-    }
-
-    return layoutItems;
-  };
-
-  const structuredLayout = createStructuredLayout(regularContent);
+  useEffect(() => {
+    const gap = 16; // Tailwind gap-4
+    const calc = () => {
+      const el = sidebarRef.current;
+      if (!el) return;
+      const h = el.getBoundingClientRect().height;
+      setSidebarHeight(h);
+      const rows = Math.max(1, Math.ceil((h + gap) / (ROW_PX + gap)));
+      setSidebarRows(rows);
+    };
+    calc();
+    const el = sidebarRef.current;
+    const ro = el ? new ResizeObserver(calc) : null;
+    if (el && ro) ro.observe(el);
+    window.addEventListener('resize', calc);
+    return () => {
+      window.removeEventListener('resize', calc);
+      ro?.disconnect();
+    };
+  }, [papers.length]);
 
   return (
     <div className="p-2 sm:p-3 lg:p-4">
-      <div className="grid gap-2 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 items-start grid-flow-row-dense">
-        
-        {/* Papers sidebar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+        {/* Top row: left chunk (3 cols) + sidebar (col 4) */}
+        {isLg && (
+          <div
+            className="col-span-1 sm:col-span-2 lg:col-span-3 overflow-hidden"
+            style={{
+              height: sidebarRows > 0 ? sidebarRows * (ROW_PX + 16) - 16 : 'auto',
+            }}
+          >
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 h-full"
+              style={{ gridAutoRows: `${ROW_PX}px` }}
+            >
+              {regularContent.slice(0, sidebarRows * 3).map((item) => (
+                <div key={item.id} className="col-span-1 row-span-1 h-full">
+                  <ArticleCard item={item} layout="regular" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {papers.length > 0 && (
-          <div className="relative z-10 pb-2 lg:col-start-4 lg:col-span-1">
+          <aside ref={sidebarRef} className="col-span-1 lg:col-start-4 lg:col-span-1">
             <div className="pb-2 mb-3">
-              <h2 className="text-lg font-bold">Research Papers</h2>
+              <h2 className="text-lg font-bold">Trending Papers</h2>
               {latestScrapeDate && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Updated {new Date(latestScrapeDate).toLocaleDateString()}
@@ -167,18 +171,22 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
                 <ChevronRight className="h-3 w-3" />
               </a>
             </div>
-          </div>
+          </aside>
         )}
 
-        {/* Content cards */}
-        {structuredLayout.map(({ item, gridClass, cardLayout }) => (
-          <div key={item.id} className={gridClass}>
-            <ArticleCard 
-              item={item} 
-              layout={cardLayout} 
-            />
+        {/* Remainder: full 4-column grid below */}
+        <div className="col-span-1 sm:col-span-2 lg:col-span-4">
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+            style={{ gridAutoRows: `${ROW_PX}px` }}
+          >
+            {(isLg ? regularContent.slice(sidebarRows * 3) : regularContent).map((item) => (
+              <div key={item.id} className="col-span-1 row-span-1 h-full">
+                <ArticleCard item={item} layout="regular" />
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
@@ -258,62 +266,58 @@ function ArticleCard({ item, layout }: ArticleCardProps) {
   };
   
   const hasThumbnail = !!item.thumbnailUrl;
+  const [hideImage, setHideImage] = useState(!hasThumbnail);
 
   const layoutConfig = {
     hero: {
       flexDirection: "flex-col",
-      imageContainer: "w-full",
-      contentContainer: hasThumbnail ? "pt-4" : "",
-      titleSize: "text-3xl",
-      summaryClamp: "line-clamp-3",
-      minHeight: "min-h-[220px]",
+      imageContainer: "w-full h-40",
+      contentContainer: !hideImage ? "pt-3" : "",
+      titleSize: "text-lg",
+      summaryClamp: "line-clamp-2",
+      minHeight: "h-full",
     },
     wide: {
       flexDirection: "flex-col",
-      imageContainer: "w-full",
-      contentContainer: hasThumbnail ? "pt-4" : "",
-      titleSize: "text-xl",
+      imageContainer: "w-full h-40",
+      contentContainer: !hideImage ? "pt-3" : "",
+      titleSize: "text-lg",
       summaryClamp: "line-clamp-2",
-      minHeight: "min-h-[180px]",
+      minHeight: "h-full",
     },
     regular: {
       flexDirection: "flex-col",
-      imageContainer: "w-full",
-      contentContainer: hasThumbnail ? "pt-4" : "",
+      imageContainer: "w-full h-40",
+      contentContainer: !hideImage ? "pt-3" : "",
       titleSize: "text-lg",
       summaryClamp: "line-clamp-2",
-      minHeight: "min-h-[150px]",
+      minHeight: "h-full",
     },
   };
 
   const currentLayout = layoutConfig[layout];
+  const titleClamp = hideImage ? 'line-clamp-3' : 'line-clamp-2';
+  const summaryClamp = hideImage ? 'line-clamp-3' : currentLayout.summaryClamp;
 
   return (
     <div
-      className={`group cursor-pointer flex ${currentLayout.flexDirection} border p-4 rounded-2xl shadow-none hover:shadow-md transition-shadow duration-300 w-full h-full ${currentLayout.minHeight} ${getCardStyleClasses()}`}
+      className={`group cursor-pointer flex ${currentLayout.flexDirection} border p-4 rounded-2xl shadow-none hover:shadow-md transition-shadow duration-300 w-full h-full overflow-hidden ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
-      {hasThumbnail && (
-        <div
-          className={`overflow-hidden rounded-xl ${currentLayout.imageContainer}`}
-          style={{ aspectRatio: '16 / 9' }}
-        >
+      {!hideImage && (
+        <div className={`overflow-hidden rounded-xl ${currentLayout.imageContainer} flex items-center justify-center`}>
           <img
             src={item.thumbnailUrl}
             alt={item.title}
             loading="lazy"
             decoding="async"
-            sizes="(min-width: 1024px) 50vw, (min-width: 768px) 66vw, 100vw"
-            className="w-full h-auto max-h-72 object-cover group-hover:scale-105 transition-transform duration-300"
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-              e.currentTarget.parentElement?.style && 
-                (e.currentTarget.parentElement.style.display = "none");
-            }}
+            sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 100vw"
+            className="max-w-full max-h-full object-contain"
+            onError={() => setHideImage(true)}
           />
         </div>
       )}
-      <div className={`flex flex-col justify-start flex-grow ${currentLayout.contentContainer}`}>
+      <div className={`flex flex-col justify-start flex-grow overflow-hidden ${currentLayout.contentContainer}`}>
         <div>
           <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
             <div className="flex items-center">
@@ -333,12 +337,12 @@ function ArticleCard({ item, layout }: ArticleCardProps) {
             )}
           </div>
 
-          <h3 className={`font-serif font-bold ${currentLayout.titleSize} mb-2 leading-tight group-hover:text-primary transition-colors`}>
+          <h3 className={`font-serif font-bold ${currentLayout.titleSize} mb-2 leading-tight group-hover:text-primary transition-colors ${titleClamp}`}>
             {item.title}
           </h3>
 
           {item.aiSummary && (
-            <p className={`text-muted-foreground text-base ${currentLayout.summaryClamp} mb-3 leading-snug`}>
+            <p className={`text-muted-foreground text-base ${summaryClamp} mb-3 leading-snug`}>
               {item.aiSummary}
             </p>
           )}

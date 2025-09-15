@@ -58,6 +58,13 @@
   }
 }
 
+/* Masonry helpers */
+@layer utilities {
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
+}
+
 /* Text clamping utilities */
 .line-clamp-2 {
   display: -webkit-box;

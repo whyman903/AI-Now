@@ -1,12 +1,27 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, asc, desc
 from app.db.base import get_db
 from app.db.models import ContentItem
 
 router = APIRouter()
+
+def _to_iso_utc(dt: datetime):
+    """Serialize datetimes as ISO8601 with Z (UTC). Handles naive values as UTC."""
+    if not dt:
+        return None
+    try:
+        if dt.tzinfo is None:
+            # Naive assumed to be UTC in our storage
+            return dt.isoformat() + 'Z'
+        return dt.astimezone(timezone.utc).isoformat()
+    except Exception:
+        try:
+            return dt.isoformat()
+        except Exception:
+            return None
 
 @router.get("")
 def get_content(
@@ -75,12 +90,12 @@ def get_content(
             "aiSummary": item_dict.get("ai_summary"),
             "sourceUrl": item_dict.get("source_url"),  # Convert to camelCase
             "author": item_dict.get("author"),
-            "publishedAt": item_dict.get("published_at"),
+            "publishedAt": _to_iso_utc(item_dict.get("published_at")),
             "thumbnailUrl": item_dict.get("thumbnail_url"),  # Convert to camelCase
             "metadata": item_dict.get("meta_data"),
             "embedding": item_dict.get("embedding"),
-            "createdAt": item_dict.get("created_at"),
-            "updatedAt": item_dict.get("updated_at")
+            "createdAt": _to_iso_utc(item_dict.get("created_at")),
+            "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
         })
     
     return {
@@ -118,12 +133,12 @@ def get_trending_content(
             "aiSummary": item_dict.get("ai_summary"),
             "sourceUrl": item_dict.get("source_url"),  # Convert to camelCase
             "author": item_dict.get("author"),
-            "publishedAt": item_dict.get("published_at"),
+            "publishedAt": _to_iso_utc(item_dict.get("published_at")),
             "thumbnailUrl": item_dict.get("thumbnail_url"),  # Convert to camelCase
             "metadata": item_dict.get("meta_data"),
             "embedding": item_dict.get("embedding"),
-            "createdAt": item_dict.get("created_at"),
-            "updatedAt": item_dict.get("updated_at")
+            "createdAt": _to_iso_utc(item_dict.get("created_at")),
+            "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
         })
     
     return {"items": serialized_items}
@@ -173,10 +188,10 @@ def get_content_item(
         "aiSummary": item_dict.get("ai_summary"),
         "sourceUrl": item_dict.get("source_url"),  # Convert to camelCase
         "author": item_dict.get("author"),
-        "publishedAt": item_dict.get("published_at"),
+        "publishedAt": _to_iso_utc(item_dict.get("published_at")),
         "thumbnailUrl": item_dict.get("thumbnail_url"),  # Convert to camelCase
         "metadata": item_dict.get("meta_data"),
         "embedding": item_dict.get("embedding"),
-        "createdAt": item_dict.get("created_at"),
-        "updatedAt": item_dict.get("updated_at")
+        "createdAt": _to_iso_utc(item_dict.get("created_at")),
+        "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
     }

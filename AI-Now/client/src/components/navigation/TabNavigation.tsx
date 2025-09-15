@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { MainChatInterface } from "@/components/chat/MainChatInterface";
-import { Search, Home, MessageCircle } from "lucide-react";
+import { Home } from "lucide-react";
 
 interface Tab {
   id: string;
@@ -11,11 +10,10 @@ interface Tab {
 }
 
 interface TabNavigationProps {
-  onContentFilter?: (content: any[]) => void;
   children: React.ReactNode; // This will be the main content (feed)
 }
 
-export function TabNavigation({ onContentFilter, children }: TabNavigationProps) {
+export function TabNavigation({ children }: TabNavigationProps) {
   const [activeTab, setActiveTab] = useState("browse");
 
   const tabs: Tab[] = [
@@ -24,16 +22,6 @@ export function TabNavigation({ onContentFilter, children }: TabNavigationProps)
       label: "Browse",
       icon: <Home className="h-4 w-4" />,
       content: children
-    },
-    {
-      id: "search",
-      label: "Search & Chat",
-      icon: <MessageCircle className="h-4 w-4" />,
-      content: (
-        <div className="min-h-full flex flex-col">
-          <MainChatInterface onContentFilter={onContentFilter} />
-        </div>
-      )
     }
   ];
 

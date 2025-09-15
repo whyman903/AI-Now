@@ -131,7 +131,7 @@ export default function Home() {
 
         {/* Tab Navigation with Content */}
         <div className="flex-1 flex flex-col">
-          <TabNavigation onContentFilter={setFilteredContent}>
+          <TabNavigation>
             <div className="px-6 py-6">
               {/* Content Filter Status */}
               {filteredContent && (
