@@ -9,8 +9,10 @@ class ContentCRUD:
     @staticmethod
     def create_content(db: Session, content_data: dict) -> ContentItem:
         """Create content in database"""
+        # Prefer url for dedupe
+        url_value = content_data.get('url')
         existing = db.query(ContentItem).filter(
-            ContentItem.source_url == content_data.get('source_url')
+            ContentItem.url == url_value
         ).first()
         
         if existing:
@@ -53,10 +55,7 @@ class ContentCRUD:
                       limit: int = 50,
                       content_type: Optional[str] = None) -> List[ContentItem]:
         """Search content by title and content"""
-        search_filter = or_(
-            ContentItem.title.ilike(f'%{query}%'),
-            ContentItem.content.ilike(f'%{query}%')
-        )
+        search_filter = ContentItem.title.ilike(f'%{query}%')
         
         db_query = db.query(ContentItem).filter(search_filter)
         

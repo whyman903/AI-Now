@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""
+Scrape Qwen blog index:
+  https://qwenlm.github.io/blog/
+
+Extracts per post: title, date_iso, date_display, url, thumbnail
+- Parses the listing page (<article.post-entry>, <footer.entry-footer>, <a.entry-link>)
+- Optionally fetches each post page to pull og:image / twitter:image / first <img> as thumbnail
+
+Usage:
+  python qwen_blog_scrape.py [--csv out.csv] [--no-thumbs]
+"""
+
+import re
+import csv
+import json
+import argparse
+from urllib.parse import urljoin, urlparse
+from datetime import datetime
+
+import requests
+from bs4 import BeautifulSoup
+from dateutil import parser as dateparser
+
+BASE = "https://qwenlm.github.io"
+INDEX_URL = "https://qwenlm.github.io/blog/"
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+def fetch(url: str) -> str:
+    r = requests.get(url, headers=HEADERS, timeout=30)
+    r.raise_for_status()
+    return r.text
+
+def normalize(s: str) -> str:
+    return " ".join(s.split()) if s else s
+
+def parse_date(text: str):
+    if not text:
+        return None, None
+    disp = normalize(text)
+    # Try ISO from 'title' attribute first if present (the listing often has <span title="...">HumanDate</span>)
+    try:
+        # If it's already ISO-ish
+        dt = dateparser.parse(disp, fuzzy=True)
+        return dt.isoformat(), disp
+    except Exception:
+        return None, disp
+
+def absolutize(url: str) -> str:
+    if not url:
+        return url
+    if url.startswith("//"):
+        return "https:" + url
+    if url.startswith("/"):
+        return urljoin(BASE, url)
+    # absolute or relative-to-index
+    return url if bool(urlparse(url).scheme) else urljoin(INDEX_URL, url)
+
+def extract_thumbnail_from_post(html: str) -> str | None:
+    soup = BeautifulSoup(html, "html.parser")
+    # Prefer og:image / twitter:image
+    for sel, attr in [
+        ('meta[property="og:image"]', "content"),
+        ('meta[name="twitter:image"]', "content"),
+    ]:
+        m = soup.select_one(sel)
+        if m and m.get(attr):
+            return absolutize(m.get(attr))
+    # Fallback: first <img> within the post content
+    # Common themes use .post-content / .entry-content, but we’ll just pick any <article> then first <img>
+    container = soup.select_one(".post-content, .entry-content, article")
+    img = (container.select_one("img") if container else None) or soup.select_one("img")
+    if img and img.get("src"):
+        return absolutize(img["src"])
+    return None
+
+def extract_index(html: str):
+    soup = BeautifulSoup(html, "html.parser")
+    posts = []
+    seen = set()
+
+    # Primary: each <article class="post-entry"> ... <a class="entry-link" href="...">
+    # Also guard for duplicated fragments by de-duping on URL.
+    for art in soup.select("article.post-entry"):
+        # URL
+        a = art.select_one("a.entry-link[href]")
+        if not a:
+            continue
+        url = absolutize(a["href"])
+        if url in seen:
+            continue
+
+        # Title
+        h2 = art.select_one("header.entry-header h2")
+        title = normalize(h2.get_text(strip=True)) if h2 else None
+
+        # Date (human string is the text of footer.entry-footer > span; the ISO-ish is in its title=)
+        date_span = art.select_one("footer.entry-footer span[title]") or art.select_one("footer.entry-footer span")
+        date_text = None
+        if date_span:
+            # Prefer machine string in title attr for ISO, but display keeps the human-readable
+            title_attr = date_span.get("title")
+            visible = date_span.get_text(strip=True)
+            # If title attr parses, use that; else parse visible
+            iso = None
+            if title_attr:
+                try:
+                    iso = dateparser.parse(title_attr, fuzzy=True).isoformat()
+                except Exception:
+                    pass
+            if not iso:
+                iso, _ = parse_date(visible)
+            date_iso = iso
+            date_display = visible
+        else:
+            date_iso = date_display = None
+
+        posts.append({
+            "title": title,
+            "date_iso": date_iso,
+            "date_display": date_display,
+            "url": url,
+            "thumbnail": None,
+        })
+        seen.add(url)
+
+    # Also support pages that place <a.entry-link> outside <article>
+    # (rare, but your pasted HTML had duplicates). We’ll add those missing items.
+    for a in soup.select("a.entry-link[href]"):
+        url = absolutize(a["href"])
+        if url in seen:
+            continue
+        # Try to locate the nearest title/footer around the anchor
+        parent = a.parent
+        title_node = None
+        date_iso = date_display = None
+
+        # climb a bit to find a sibling header/footer
+        ctx = parent
+        for _ in range(4):
+            if not ctx:
+                break
+            title_node = title_node or ctx.select_one("header.entry-header h2")
+            if not date_iso and not date_display:
+                span = ctx.select_one("footer.entry-footer span[title]") or ctx.select_one("footer.entry-footer span")
+                if span:
+                    vis = span.get_text(strip=True)
+                    iso = None
+                    if span.has_attr("title"):
+                        try:
+                            iso = dateparser.parse(span["title"], fuzzy=True).isoformat()
+                        except Exception:
+                            pass
+                    if not iso:
+                        iso, _ = parse_date(vis)
+                    date_iso, date_display = iso, vis
+            ctx = ctx.parent
+
+        title = normalize(title_node.get_text(strip=True)) if title_node else None
+        posts.append({
+            "title": title,
+            "date_iso": date_iso,
+            "date_display": date_display,
+            "url": url,
+            "thumbnail": None,
+            "author": 'Qwen', 
+            "type": "research_lab"
+        })
+        seen.add(url)
+
+    return posts
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--csv", help="Write results to CSV at this path")
+    args = ap.parse_args()
+
+    index_html = fetch(INDEX_URL)
+    items = extract_index(index_html)
+
+    # Output JSON
+    print(json.dumps(items, indent=2, ensure_ascii=False))
+
+    # Optional CSV
+    if args.csv:
+        with open(args.csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])
+            w.writeheader()
+            for row in items:
+                w.writerow(row)
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""
+Scrape OpenAI Research grid (Selenium):
+  https://openai.com/research/index/?display=grid
+
+Extracts: title, date_iso, date_display, thumbnail, url
+Outputs JSON to stdout (and optional CSV via --csv)
+
+Usage:
+  python openai_research_scrape_selenium.py [--csv out.csv] [--no-headless]
+"""
+
+import sys
+import json
+import csv
+import time
+import argparse
+from urllib.parse import urljoin
+
+from bs4 import BeautifulSoup
+
+# --- Selenium imports
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+
+BASE = "https://openai.com"
+START_URL = "https://openai.com/research/index/?display=grid"
+from selenium.webdriver.chrome.service import Service
+
+def build_driver(headless: bool = True) -> webdriver.Chrome:
+    opts = Options()
+    if headless:
+        opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--window-size=1400,1000")
+    opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
+    opts.add_argument("accept-language=en-US,en;q=0.9")
+    opts.add_argument(
+        "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/126.0.0.0 Safari/537.36"
+    )
+
+    # ✅ Use Service() here instead of passing the path directly
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=opts)
+
+    # Remove webdriver flag
+    driver.execute_cdp_cmd(
+        "Page.addScriptToEvaluateOnNewDocument",
+        {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"}
+    )
+    return driver
+
+def wait_for_grid(driver, timeout=20):
+    # Wait until at least one research tile anchor is present
+    sel = "a[aria-label][href^='/index/']"
+    WebDriverWait(driver, timeout).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, sel))
+    )
+
+def autoscroll_to_bottom(driver, pause=0.8, max_tries=20):
+    """
+    Scrolls to bottom, waiting for lazy-loaded content.
+    Stops when page height no longer increases or max_tries reached.
+    """
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    tries = 0
+    while tries < max_tries:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(pause)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            # Give one more nudge to trigger any intersection observers
+            time.sleep(pause)
+            new_height = driver.execute_script("return document.body.scrollHeight")
+            if new_height == last_height:
+                break
+        last_height = new_height
+        tries += 1
+
+def normalize_text(s: str) -> str:
+    return " ".join(s.split()) if s else s
+
+def extract_from_html(html: str):
+    soup = BeautifulSoup(html, "html.parser")
+    items = []
+
+    # Each card has an <a ... href="/index/..."> containing a <time>
+    for a in soup.select("a[aria-label][href^='/index/']"):
+        try:
+            # Title (prefer visible header-like element, fallback to aria-label prefix)
+            title_node = a.select_one(".mb-2xs, .text-h5, h2, h3")
+            if title_node:
+                title = normalize_text(title_node.get_text(strip=True))
+            else:
+                aria = a.get("aria-label", "")
+                title = normalize_text(aria.split(" - ")[0]) if (" - " in aria) else (aria or None)
+
+            # Date
+            time_node = a.select_one("time[datetime]") or a.select_one("time")
+            date_iso = time_node.get("datetime") if time_node and time_node.has_attr("datetime") else None
+            date_display = normalize_text(time_node.get_text(strip=True)) if time_node else None
+
+            # URL
+            url = urljoin(BASE, a.get("href"))
+
+            # Thumbnail: look within the same outer card container (parent/previous sibling)
+            thumb = None
+            parent = a.parent
+            # Try nearest <img> in parent (or previous siblings) — grid wraps media above the anchor
+            if parent:
+                img = parent.select_one("img")
+                if not img and parent.previous_sibling:
+                    prev_el = parent.previous_sibling
+                    # BeautifulSoup may include whitespace nodes; walk back to an element
+                    while prev_el and getattr(prev_el, "name", None) is None:
+                        prev_el = prev_el.previous_sibling
+                    if prev_el:
+                        img = prev_el.select_one("img") if hasattr(prev_el, "select_one") else None
+
+                if img:
+                    if img.get("src"):
+                        thumb = img["src"]
+                    elif img.get("srcset"):
+                        # take highest-res candidate from srcset
+                        cands = [p.strip().split(" ")[0] for p in img["srcset"].split(",") if p.strip()]
+                        if cands:
+                            thumb = cands[-1]
+
+            items.append({
+                "title": title,
+                "date_iso": date_iso,
+                "date_display": date_display,
+                "thumbnail": thumb,
+                "url": url,
+                "author": 'OpenAI', 
+                "type": "research_lab"
+            })
+        except Exception:
+            continue
+
+    # De-dup by URL
+    seen, deduped = set(), []
+    for it in items:
+        u = it.get("url")
+        if u and u not in seen:
+            deduped.append(it)
+            seen.add(u)
+    return deduped
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--csv", help="Also write results to CSV")
+    ap.add_argument("--no-headless", action="store_true", help="Run with a visible browser window")
+    args = ap.parse_args()
+
+    driver = build_driver(headless=not args.no_headless)
+    try:
+        driver.get(START_URL)
+        wait_for_grid(driver, timeout=25)
+        autoscroll_to_bottom(driver, pause=0.9, max_tries=24)
+        html = driver.page_source
+    except TimeoutException:
+        # Even if wait timed out, try to parse what we have
+        html = driver.page_source
+    finally:
+        driver.quit()
+
+    data = extract_from_html(html)
+
+    # Print JSON to stdout
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+
+    # Optional CSV
+    if args.csv:
+        with open(args.csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])
+            w.writeheader()
+            for row in data:
+                w.writerow(row)
+
+if __name__ == "__main__":
+    main()

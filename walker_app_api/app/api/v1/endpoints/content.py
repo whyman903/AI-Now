@@ -29,6 +29,7 @@ def get_content(
     offset: int = Query(0, ge=0),
     content_type: Optional[str] = Query(None),
     exclude_type: Optional[str] = Query(None),
+    order: Optional[str] = Query(None, description="Ordering strategy: 'recent' or 'interleave' (default). For research_paper, rank ordering applies."),
     db: Session = Depends(get_db)
 ):
     """
@@ -55,24 +56,30 @@ def get_content(
             asc(ContentItem.meta_data['rank'].as_float()).nullslast()
         )
     else:
-        # Create a subquery that assigns a row number to each item, partitioned by type
-        # and ordered by recency. This lets us pick the 1st of each type, then 2nd, etc.
-        ranked_items_subquery = base_query.add_columns(
-            func.row_number().over(
-                partition_by=ContentItem.type,
-                order_by=ContentItem.published_at.desc()
-            ).label("rank_in_type")
-        ).subquery()
+        # Choose ordering strategy
+        strategy = (order or 'interleave').lower()
+        if strategy == 'recent':
+            # Plain recent ordering
+            query = base_query.order_by(ContentItem.published_at.desc())
+        else:
+            # Create a subquery that assigns a row number to each item, partitioned by type
+            # and ordered by recency. This lets us pick the 1st of each type, then 2nd, etc.
+            ranked_items_subquery = base_query.add_columns(
+                func.row_number().over(
+                    partition_by=ContentItem.type,
+                    order_by=ContentItem.published_at.desc()
+                ).label("rank_in_type")
+            ).subquery()
 
-        # We query from this subquery, using an alias to refer to its columns
-        ranked_content = aliased(ContentItem, ranked_items_subquery)
-        
-        # The main query now orders by the rank within each type, which interleaves the content.
-        # A secondary sort by published date keeps the most recent items from each type group at the top.
-        query = db.query(ranked_content).order_by(
-            ranked_items_subquery.c.rank_in_type,
-            ranked_content.published_at.desc()
-        )
+            # We query from this subquery, using an alias to refer to its columns
+            ranked_content = aliased(ContentItem, ranked_items_subquery)
+            
+            # The main query now orders by the rank within each type, which interleaves the content.
+            # A secondary sort by published date keeps the most recent items from each type group at the top.
+            query = db.query(ranked_content).order_by(
+                ranked_items_subquery.c.rank_in_type,
+                ranked_content.published_at.desc()
+            )
     
     # Apply pagination (this is now safe on the diversified query)
     total = query.count()
@@ -86,14 +93,12 @@ def get_content(
             "id": item_dict.get("id"),
             "type": item_dict.get("type"),
             "title": item_dict.get("title"),
-            "content": item_dict.get("content"),
-            "aiSummary": item_dict.get("ai_summary"),
-            "sourceUrl": item_dict.get("source_url"),  # Convert to camelCase
+            "url": item_dict.get("url"),
             "author": item_dict.get("author"),
             "publishedAt": _to_iso_utc(item_dict.get("published_at")),
-            "thumbnailUrl": item_dict.get("thumbnail_url"),  # Convert to camelCase
+            "thumbnailUrl": item_dict.get("thumbnail_url"),
             "metadata": item_dict.get("meta_data"),
-            "embedding": item_dict.get("embedding"),
+            "clicks": item_dict.get("clicks"),
             "createdAt": _to_iso_utc(item_dict.get("created_at")),
             "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
         })
@@ -129,14 +134,12 @@ def get_trending_content(
             "id": item_dict.get("id"),
             "type": item_dict.get("type"),
             "title": item_dict.get("title"),
-            "content": item_dict.get("content"),
-            "aiSummary": item_dict.get("ai_summary"),
-            "sourceUrl": item_dict.get("source_url"),  # Convert to camelCase
+            "url": item_dict.get("url"),
             "author": item_dict.get("author"),
             "publishedAt": _to_iso_utc(item_dict.get("published_at")),
-            "thumbnailUrl": item_dict.get("thumbnail_url"),  # Convert to camelCase
+            "thumbnailUrl": item_dict.get("thumbnail_url"),
             "metadata": item_dict.get("meta_data"),
-            "embedding": item_dict.get("embedding"),
+            "clicks": item_dict.get("clicks"),
             "createdAt": _to_iso_utc(item_dict.get("created_at")),
             "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
         })
@@ -184,14 +187,12 @@ def get_content_item(
         "id": item_dict.get("id"),
         "type": item_dict.get("type"),
         "title": item_dict.get("title"),
-        "content": item_dict.get("content"),
-        "aiSummary": item_dict.get("ai_summary"),
-        "sourceUrl": item_dict.get("source_url"),  # Convert to camelCase
+        "url": item_dict.get("url"),
         "author": item_dict.get("author"),
         "publishedAt": _to_iso_utc(item_dict.get("published_at")),
-        "thumbnailUrl": item_dict.get("thumbnail_url"),  # Convert to camelCase
+        "thumbnailUrl": item_dict.get("thumbnail_url"),
         "metadata": item_dict.get("meta_data"),
-        "embedding": item_dict.get("embedding"),
+        "clicks": item_dict.get("clicks"),
         "createdAt": _to_iso_utc(item_dict.get("created_at")),
         "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
     }

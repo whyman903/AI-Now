@@ -3,7 +3,7 @@ Database models that exactly match the Node.js schema.
 This ensures both backends can work with the same database structure.
 """
 
-from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -36,15 +36,12 @@ class ContentItem(Base):
     id = Column(String, primary_key=True, server_default=func.gen_random_uuid())
     type = Column(String, nullable=False, index=True)
     title = Column(Text, nullable=False)
-    content = Column(Text)
-    ai_summary = Column("ai_summary", Text)
-    source_url = Column("source_url", Text, nullable=False)
-    normalized_url = Column("normalized_url", Text, index=True, nullable=True)
+    url = Column("url", Text, nullable=False)
     author = Column(Text)
     published_at = Column("published_at", DateTime, index=True)
     thumbnail_url = Column("thumbnail_url", Text)
     meta_data = Column("metadata", JSON)
-    embedding = Column(Text)
+    clicks = Column(Integer, nullable=False, server_default='0')
     created_at = Column("created_at", DateTime, server_default=func.now())
     updated_at = Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now())
     
@@ -53,7 +50,7 @@ class ContentItem(Base):
     __table_args__ = (
         Index('idx_content_items_type', 'type'),
         Index('idx_content_items_published', 'published_at'),
-        UniqueConstraint('normalized_url', name='uq_content_items_normalized_url'),
+        UniqueConstraint('url', name='uq_content_items_url'),
     )
 
 
