@@ -25,6 +25,7 @@ dependencies = [
     "textstat>=0.7.0",
     "sentence-transformers>=2.2.0",
     "firecrawl-py==0.0.16",
+    "cloudscraper==1.2.71",
 ]
 
 [tool.uv]

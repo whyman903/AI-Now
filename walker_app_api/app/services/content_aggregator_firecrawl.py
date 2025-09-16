@@ -53,10 +53,10 @@ class ContentAggregatorFirecrawl:
             {"name": "DeepMind Blog", "url": "https://deepmind.google/blog/rss.xml", "category": "ai_ml", "type": "blog"},
             {"name": "Microsoft Research", "url": "https://www.microsoft.com/en-us/research/feed/", "category": "ai_ml", "type": "blog"},
             {"name": "NVIDIA Developer Blog", "url": "https://developer.nvidia.com/blog/feed/", "category": "ai_ml", "type": "blog"},
-            {"name": "Hugging Face Blog", "url": "https://huggingface.co/blog/feed.xml", "category": "ai_ml", "type": "blog"},
+            # {"name": "Hugging Face Blog", "url": "https://huggingface.co/blog/feed.xml", "category": "ai_ml", "type": "blog"},
             
             # Podcasts
-            {"name": "Lex Fridman Podcast", "url": "https://lexfridman.com/feed/podcast/", "category": "ai_ml", "type": "podcast"},
+            # {"name": "Lex Fridman Podcast", "url": "https://lexfridman.com/feed/podcast/", "category": "ai_ml", "type": "podcast"},
             {"name": "Y Combinator Podcast", "url": "https://www.ycombinator.com/blog/feed/", "category": "startup", "type": "podcast"},
             
             # Startup/Business
@@ -147,6 +147,17 @@ class ContentAggregatorFirecrawl:
                     "title": "h3",
                     "link": "self",
                     "content": "p.paragraph-m"
+                }
+            },
+            {
+                "name": "xAI",
+                "url": "https://x.ai/blog",
+                "category": "ai_ml",
+                "selectors": {
+                    "container": "a",
+                    "title": "a",
+                    "link": "self",
+                    "content": "p"
                 }
             },
             {
@@ -320,8 +331,7 @@ class ContentAggregatorFirecrawl:
                     channel_items.append({
                         'type': 'youtube_video',
                         'title': entry.title,
-                        'content': (entry.summary[:500] if hasattr(entry, 'summary') else ''),
-                        'source_url': entry.link,
+                        'url': entry.link,
                         'author': channel['name'],
                         'published_at': published_at,
                         'thumbnail_url': thumbnail_url,
@@ -409,8 +419,7 @@ class ContentAggregatorFirecrawl:
                     normalized.append({
                         'type': article_data.get('content_type', 'article'),
                         'title': article_data['title'],
-                        'content': (article_data.get('content') or '')[:500],
-                        'source_url': article_data['source_url'],
+                        'url': article_data['source_url'],
                         'author': article_data.get('author', ''),
                         'published_at': article_data['published_at'],
                         'thumbnail_url': article_data.get('thumbnail_url'),
@@ -515,8 +524,7 @@ class ContentAggregatorFirecrawl:
                 item_data = {
                     'type': rss_type,
                     'title': entry.title,
-                    'content': getattr(entry, 'summary', '')[:500],
-                    'source_url': entry.link,
+                    'url': entry.link,
                     'author': feed_config['name'],
                     'published_at': published_at,
                     'thumbnail_url': thumb,
@@ -620,50 +628,33 @@ class ContentAggregatorFirecrawl:
         Also enrich thumbnails for new items. Returns counts for added, updated, and with thumbnails.
         """
         # Normalize and drop invalid items
-        candidates = [i for i in items if i.get('source_url') and i.get('title')]
+        candidates = [i for i in items if (i.get('url') or i.get('source_url')) and i.get('title')]
         if not candidates:
             return {'items_added': 0, 'items_with_thumbnails': 0}
 
         # Compute normalized URLs and prepare lookup keys
         for i in candidates:
-            i['normalized_url'] = self.canonicalize(i['source_url'])
+            i['url'] = i.get('url') or i.get('source_url')
+            i['url'] = self.canonicalize(i['url'])
 
-        urls = [i['source_url'] for i in candidates]
-        norm_urls = [i['normalized_url'] for i in candidates]
+        urls = [i['url'] for i in candidates]
 
         db = SessionLocal()
-        # Detect if normalized_url column exists to stay compatible with older DBs
-        try:
-            from sqlalchemy import inspect as _sa_inspect
-            inspector = _sa_inspect(db.get_bind())
-            cols = {c['name'] for c in inspector.get_columns('content_items')}
-            has_norm_col = 'normalized_url' in cols
-        except Exception:
-            has_norm_col = False
+        has_norm_col = False
 
         # Fetch existing items keyed by normalized_url and source_url
-        existing_items_by_norm = {}
-        if has_norm_col:
-            try:
-                existing_items_by_norm = {
-                    ci.normalized_url: ci
-                    for ci in db.query(ContentItem).filter(ContentItem.normalized_url.in_(norm_urls)).all()
-                    if ci.normalized_url
-                }
-            except Exception:
-                existing_items_by_norm = {}
-        existing_items_by_url = {ci.source_url: ci for ci in db.query(ContentItem).filter(ContentItem.source_url.in_(urls)).all()}
+        existing_items_by_url = {ci.url: ci for ci in db.query(ContentItem).filter(ContentItem.url.in_(urls)).all()}
 
         # First, handle updates for existing items (especially HF trending)
         items_updated = 0
         updated_details = []
         for item in candidates:
-            existing = existing_items_by_norm.get(item['normalized_url']) or existing_items_by_url.get(item['source_url'])
+            existing = existing_items_by_url.get(item['url'])
             if not existing:
                 continue
 
             try:
-                # Only update if it's a research paper from Hugging Face Papers
+                # Special handling for Hugging Face trending papers (update rank/snapshot)
                 is_hf_paper = False
                 try:
                     is_hf_paper = (
@@ -673,18 +664,16 @@ class ContentAggregatorFirecrawl:
                 except Exception:
                     is_hf_paper = False
 
+                changed = False
                 if is_hf_paper:
                     existing_meta = existing.meta_data or {}
                     incoming_meta = item.get('meta_data') or {}
-                    # Update rank and scraped_date snapshot
-                    changed = False
                     if 'rank' in incoming_meta and existing_meta.get('rank') != incoming_meta['rank']:
                         existing_meta['rank'] = incoming_meta['rank']
                         changed = True
                     if 'scraped_date' in incoming_meta and existing_meta.get('scraped_date') != incoming_meta['scraped_date']:
                         existing_meta['scraped_date'] = incoming_meta['scraped_date']
                         changed = True
-                    # Keep source_name consistent
                     if 'source_name' in incoming_meta:
                         existing_meta['source_name'] = incoming_meta['source_name']
                     # Update author/title if they changed slightly
@@ -694,23 +683,39 @@ class ContentAggregatorFirecrawl:
                     if item.get('title') and item['title'] != existing.title:
                         existing.title = item['title']
                         changed = True
-                    # Persist back
                     if changed:
                         existing.meta_data = existing_meta
-                        items_updated += 1
+                else:
+                    # Generic updates for existing items
+                    if item.get('published_at'):
                         try:
-                            updated_details.append({
-                                'title': existing.title,
-                                'rank': existing_meta.get('rank'),
-                                'scraped_date': existing_meta.get('scraped_date')
-                            })
+                            if (not getattr(existing, 'published_at', None)) or (existing.published_at and existing.published_at > item['published_at']):
+                                existing.published_at = item['published_at']
+                                changed = True
                         except Exception:
                             pass
+                    if not getattr(existing, 'thumbnail_url', None) and item.get('thumbnail_url'):
+                        existing.thumbnail_url = item['thumbnail_url']
+                        changed = True
+                    if item.get('author') and item.get('author') != getattr(existing, 'author', None):
+                        existing.author = item['author']
+                        changed = True
+
+                if changed:
+                    items_updated += 1
+                    try:
+                        updated_details.append({
+                            'title': getattr(existing, 'title', ''),
+                            'rank': (existing.meta_data or {}).get('rank') if is_hf_paper else None,
+                            'scraped_date': (existing.meta_data or {}).get('scraped_date') if is_hf_paper else None
+                        })
+                    except Exception:
+                        pass
             except Exception as e:
-                logger.debug(f"Failed updating existing item metadata for {item['source_url']}: {e}")
+                logger.debug(f"Failed updating existing item metadata for {item.get('url')}: {e}")
 
         # Determine which are new
-        new_items = [i for i in candidates if (i['normalized_url'] not in existing_items_by_norm and i['source_url'] not in existing_items_by_url)]
+        new_items = [i for i in candidates if (i['url'] not in existing_items_by_url)]
         if not new_items:
             db.commit()
             db.close()
@@ -722,7 +727,7 @@ class ContentAggregatorFirecrawl:
         async def enrich(item: Dict[str, Any]):
             if not item.get('thumbnail_url'):
                 async with sem:
-                    thumb = await self._extract_thumbnail(item['source_url'])
+                    thumb = await self._extract_thumbnail(item['url'])
                 if thumb:
                     item['thumbnail_url'] = thumb
 
@@ -733,19 +738,9 @@ class ContentAggregatorFirecrawl:
             if i.get('thumbnail_url'):
                 with_thumbs += 1
             # Remove any transient field not in model
-            i_clean = {k: v for k, v in i.items() if k != 'scraped_at'}
-            if not has_norm_col:
-                i_clean.pop('normalized_url', None)
+            i_clean = {k: v for k, v in i.items() if k not in ['scraped_at', 'source_url', 'content', 'normalized_url', 'ai_summary', 'embedding']}
             try:
-                # Attempt Postgres upsert on normalized_url if available
-                bind = db.get_bind()
-                if bind and bind.dialect.name == 'postgresql' and has_norm_col and i_clean.get('normalized_url'):
-                    from sqlalchemy.dialects.postgresql import insert
-                    stmt = insert(ContentItem.__table__).values(**i_clean)
-                    stmt = stmt.on_conflict_do_nothing(index_elements=['normalized_url'])
-                    db.execute(stmt)
-                else:
-                    db.add(ContentItem(**i_clean))
+                db.add(ContentItem(**i_clean))
             except Exception:
                 # Fallback to add (may raise on duplicates if constraint exists)
                 try:

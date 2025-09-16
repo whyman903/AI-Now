@@ -64,27 +64,29 @@ def ensure_content_items_compat_schema():
             inspector = inspect(conn)
             cols = {c['name'] for c in inspector.get_columns('content_items')}
 
-            if 'ai_summary' not in cols:
+            # Ensure new lean columns exist
+            if 'url' not in cols:
                 try:
-                    conn.execute(text("ALTER TABLE content_items ADD COLUMN ai_summary text"))
+                    conn.execute(text("ALTER TABLE content_items ADD COLUMN url text"))
+                except Exception:
+                    pass
+                try:
+                    # Backfill from legacy source_url if present
+                    legacy_cols = {c['name'] for c in inspector.get_columns('content_items')}
+                    if 'source_url' in legacy_cols:
+                        conn.execute(text("UPDATE content_items SET url = source_url WHERE url IS NULL"))
                 except Exception:
                     pass
 
-            if 'normalized_url' not in cols:
+            if 'clicks' not in cols:
                 try:
-                    conn.execute(text("ALTER TABLE content_items ADD COLUMN normalized_url text"))
-                except Exception:
-                    pass
-
-            if 'embedding' not in cols:
-                try:
-                    conn.execute(text("ALTER TABLE content_items ADD COLUMN embedding text"))
+                    conn.execute(text("ALTER TABLE content_items ADD COLUMN clicks integer DEFAULT 0 NOT NULL"))
                 except Exception:
                     pass
 
             try:
                 if conn.dialect.name == 'postgresql':
-                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_content_items_normalized_url ON content_items(normalized_url) WHERE normalized_url IS NOT NULL"))
+                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_content_items_url ON content_items(url) WHERE url IS NOT NULL"))
             except Exception:
                 pass
     except Exception as e:
