@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""
-Scrape Moonshot.ai homepage cards with Selenium:
-  https://www.moonshot.ai/
-
-Extract per card (anchors only):
-- title
-- date_iso, date_display
-- thumbnail (video src or background-image from style)
-- url
-
-Usage:
-  python moonshot_news_scrape_selenium.py [--csv out.csv] [--no-headless]
-"""
-
 import re
 import csv
 import json
@@ -39,7 +25,7 @@ BG_URL_RE = re.compile(r'background-image\s*:\s*url\((["\']?)(.*?)\1\)', re.I)
 def absolutize(u: str | None) -> str | None:
     if not u:
         return None
-    if u.startswith("//"):  # protocol-relative
+    if u.startswith("//"):
         return "https:" + u
     if u.startswith("/"):
         return urljoin(BASE, u)
@@ -66,7 +52,6 @@ def build_driver(headless: bool = True) -> webdriver.Chrome:
     )
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=opts)
-    # Hide webdriver flag to reduce bot checks
     driver.execute_cdp_cmd(
         "Page.addScriptToEvaluateOnNewDocument",
         {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"}
@@ -74,7 +59,6 @@ def build_driver(headless: bool = True) -> webdriver.Chrome:
     return driver
 
 def wait_for_cards(driver, timeout=25):
-    # Wait until at least one K2 or Research anchor appears
     sel = "a[class*='k2Item'], a[class*='researchItem']"
     WebDriverWait(driver, timeout).until(EC.presence_of_element_located((By.CSS_SELECTOR, sel)))
 
@@ -105,7 +89,6 @@ def pick_bg_url_from_style(style_val: str | None) -> str | None:
 def extract_items(driver):
     items, seen = [], set()
 
-    # 1) K2 hero cards (video + title/date inside the same <a>)
     for a in driver.find_elements(By.CSS_SELECTOR, "a[class*='k2Item']"):
         href = a.get_attribute("href")
         if not href:
@@ -116,9 +99,8 @@ def extract_items(driver):
 
         title = get_text_safe(a, "h2[class*='title___'], h2")
         date_display = get_text_safe(a, "p[class*='time___'], time")
-        date_iso = date_display  # already YYYY-MM-DD on site
+        date_iso = date_display
 
-        # Thumbnail: <video src> (protocol-relative) or first <img> inside the anchor
         thumb = None
         try:
             vid = a.find_element(By.CSS_SELECTOR, "video")
@@ -143,7 +125,6 @@ def extract_items(driver):
         })
         seen.add(url)
 
-    # 2) Research cards (background-image on anchor style + title/date inside)
     for a in driver.find_elements(By.CSS_SELECTOR, "a[class*='researchItem']"):
         href = a.get_attribute("href")
         if not href:
@@ -166,7 +147,7 @@ def extract_items(driver):
             "date_display": date_display,
             "thumbnail": thumb,
             "url": url,
-            "author": 'Moonshot', 
+            "author": 'Moonshot',
             "type": "research_lab"
         })
         seen.add(url)

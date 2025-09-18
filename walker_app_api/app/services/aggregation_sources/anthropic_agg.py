@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""
-Scrape Anthropic News accurately:
-  https://www.anthropic.com/news
-
-Extracts: title, date_iso, date_display, thumbnail, url
-Prints JSON to stdout; optional CSV with --csv.
-
-Usage:
-  python anthropic_news_scrape_selenium_v2.py [--csv out.csv] [--no-headless]
-"""
-
 import re
 import csv
 import json
@@ -94,7 +83,6 @@ def parse_date_text(text: str):
     if not text:
         return None, None
     disp = normalize(text)
-    # Try robust parse first
     for fn in (
         lambda x: dateparser.parse(x, fuzzy=True),
         lambda x: datetime.strptime(x, "%b %d, %Y"),
@@ -117,7 +105,6 @@ def pick_best_src_from_srcset(srcset: str) -> str | None:
     parts = [p.strip() for p in srcset.split(",") if p.strip()]
     if not parts:
         return None
-    # last is usually highest width
     last = parts[-1].split()[0]
     return last
 
@@ -125,7 +112,6 @@ def extract_from_html(html: str):
     soup = BeautifulSoup(html, "html.parser")
     items, seen = [], set()
 
-    # Only iterate <a> cards and read everything FROM INSIDE that <a>
     anchors = soup.select(
         "a.PostCard_post-card__z_Sqq, a[class*='PostCard_post-card__'], "
         "a.Card_linkRoot__alQfM, a[class*='Card_linkRoot__']"
@@ -139,31 +125,21 @@ def extract_from_html(html: str):
         if url in seen:
             continue
 
-        # --- Title ---
-        # PostCard variant
         title_node = a.select_one("h3.PostCard_post-heading__Ob1pu, h3[class*='PostCard_post-heading__']")
-        # Card variant
         if not title_node:
             title_node = a.select_one("h3.Card_headline__reaoT, h3[class*='Card_headline__']")
-        # Generic fallback
         if not title_node:
             title_node = a.select_one("h3")
         title = normalize(title_node.get_text(strip=True)) if title_node else None
 
-        # --- Date (only from inside the anchor) ---
-        # 1) Post list date div
         date_node = a.select_one("div.PostList_post-date__djrOA, div[class*='PostList_post-date__']")
-        # 2) Card date paragraph (detail-m agate)
         if not date_node:
             date_node = a.select_one("p.detail-m.agate")
-        # 3) Any <time> inside anchor
         if not date_node:
             date_node = a.select_one("time[datetime], time")
         date_text = date_node.get("datetime") if (date_node and date_node.name == "time" and date_node.has_attr("datetime")) else (normalize(date_node.get_text(strip=True)) if date_node else None)
         date_iso, date_display = parse_date_text(date_text)
 
-        # --- Thumbnail (only from inside the anchor) ---
-        # Prefer explicit <img> within card; choose highest-res from srcset
         img = a.select_one("img")
         thumbnail = None
         if img:
@@ -172,7 +148,6 @@ def extract_from_html(html: str):
                 thumbnail = best or img.get("src")
             else:
                 thumbnail = img.get("src")
-        # absolutize if needed (handles /_next/image?url=...)
         if thumbnail and thumbnail.startswith("/"):
             thumbnail = urljoin(BASE, thumbnail)
 
@@ -182,7 +157,7 @@ def extract_from_html(html: str):
             "date_display": date_display,
             "thumbnail": thumbnail,
             "url": url,
-            "author": 'Anthropic', 
+            "author": 'Anthropic',
             "type": "research_lab"
         })
         seen.add(url)

@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-"""
-Scrape x.ai/news (Selenium):
-  https://x.ai/news
-
-Extracts per post: title, date_iso, date_display, thumbnail, url
-Prints JSON to stdout and (optionally) writes CSV via --csv.
-
-Usage:
-  python xai_news_scrape_selenium.py [--csv out.csv] [--no-headless]
-"""
-
 import re
 import json
 import csv
@@ -61,7 +50,6 @@ def build_driver(headless: bool = True) -> webdriver.Chrome:
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=opts)
 
-    # Hide webdriver flag
     driver.execute_cdp_cmd(
         "Page.addScriptToEvaluateOnNewDocument",
         {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"}
@@ -69,7 +57,6 @@ def build_driver(headless: bool = True) -> webdriver.Chrome:
     return driver
 
 def wait_for_news(driver, timeout=20):
-    # Wait until at least one news anchor is present
     sel = "a[href^='/news/'] h3"
     WebDriverWait(driver, timeout).until(EC.presence_of_element_located((By.CSS_SELECTOR, sel)))
 
@@ -117,7 +104,6 @@ def parse_date(d: str) -> tuple[str | None, str | None]:
         dt = dateparser.parse(d_disp, fuzzy=True)
         return dt.isoformat(), d_disp
     except Exception:
-        # Fallback: try common format (e.g., "August 28, 2025")
         try:
             dt = datetime.strptime(d_disp, "%B %d, %Y")
             return dt.isoformat(), d_disp
@@ -129,31 +115,20 @@ def extract_from_html(html: str):
     items = []
     seen_urls = set()
 
-    # Strategy:
-    # - Iterate all anchors leading to /news/... (there can be duplicate anchors per card)
-    # - For each anchor, climb to the top card wrapper that also contains the date and the image block.
-    # - Extract title from the <h3> under the <a>.
-    # - Extract date from a nearby <p class="mono-tag"> within the same card wrapper.
-    # - Extract thumbnail from a sibling block having inline style with background-image.
     for a in soup.select("a[href^='/news/']"):
         href = a.get("href")
         if not href:
             continue
         url = urljoin(BASE, href)
 
-        # Skip duplicates early
         if url in seen_urls:
             continue
 
-        # Title: prefer h3 within this anchor
         h3 = a.find("h3")
         title = normalize(h3.get_text(strip=True)) if h3 else None
         if not title:
-            # fallback: anchor text itself
             title = normalize(a.get_text(strip=True)) or None
 
-        # Find a reasonable "card wrapper": climb parents until we find one that contains
-        # date-like text. Fall back to the first parent that contains a background image.
         wrapper = None
         background_parent: Tag | None = None
         cur: Tag | None = a
@@ -189,7 +164,6 @@ def extract_from_html(html: str):
                     background_parent = bg_cursor
                     break
 
-        # Date
         date_iso = None
         date_display = None
         fallback_display = None
@@ -214,7 +188,6 @@ def extract_from_html(html: str):
         if not date_display and fallback_display:
             date_display = fallback_display
 
-        # Thumbnail (background-image in sibling/child div)
         bg_div = None
         if wrapper:
             bg_div = wrapper.select_one("div[style*='background-image']")
@@ -223,14 +196,13 @@ def extract_from_html(html: str):
         thumb_rel = extract_bg_url(bg_div.get("style")) if bg_div else None
         thumbnail = urljoin(BASE, thumb_rel) if thumb_rel else None
 
-        # Finalize item
         items.append({
             "title": title,
             "date_iso": date_iso,
             "date_display": date_display,
             "thumbnail": thumbnail,
             "url": url,
-            "author": 'XAI', 
+            "author": 'XAI',
             "type": "research_lab"
         })
         seen_urls.add(url)
@@ -299,10 +271,8 @@ def main():
 
     data = scrape(headless=not args.no_headless)
 
-    # Emit JSON
     print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
-    # Optional CSV
     if args.csv:
         with open(args.csv, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])

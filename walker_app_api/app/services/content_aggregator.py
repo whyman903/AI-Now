@@ -294,10 +294,6 @@ class ContentAggregator:
             "items_updated": items_updated,
         }
 
-    # ---------------------------------------------------------------------
-    # Feed helpers
-    # ---------------------------------------------------------------------
-
     async def _process_rss_feed(self, feed_config: Dict[str, Any]) -> List[Dict[str, Any]]:
         headers: Dict[str, str] = {}
         db = SessionLocal()
@@ -373,10 +369,6 @@ class ContentAggregator:
             pass
         finally:
             db.close()
-
-    # ---------------------------------------------------------------------
-    # Persistence helpers
-    # ---------------------------------------------------------------------
 
     async def _persist_items(self, items: List[Dict[str, Any]]) -> Dict[str, int]:
         if not items:
@@ -458,10 +450,6 @@ class ContentAggregator:
             }
         finally:
             db.close()
-
-    # ---------------------------------------------------------------------
-    # Utilities
-    # ---------------------------------------------------------------------
 
     def canonicalize(self, url: str) -> str:
         try:

@@ -48,7 +48,6 @@ async def fetch_text(client: httpx.AsyncClient, url: str, retries: int = 3, time
             r = await client.get(url, headers=HEADERS, timeout=timeout)
             if r.status_code == 200:
                 return r.text
-            # Some Next.js pages 307/308 to canonical; httpx follows redirects by default.
         except (httpx.HTTPError, httpx.ReadTimeout):
             pass
         await asyncio.sleep(delay + random.random() * 0.4)
@@ -65,7 +64,6 @@ def extract_paper_hrefs(html: str) -> List[str]:
     """
     hrefs = set(PAPER_HREF_RE.findall(html))
 
-    # DOM-based fallback
     soup = BeautifulSoup(html, "html.parser")
     for a in soup.find_all("a", href=True):
         h = a["href"]
@@ -97,26 +95,22 @@ def normalize_arxiv_to_pdf(url: str) -> str:
 def find_pdf_link_from_html(html: str, base_url: str) -> Optional[str]:
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1) Anchor with text mentioning PDF
     for a in soup.find_all("a", href=True):
         text = (a.get_text() or "").strip().lower()
         href = a["href"]
         if "pdf" in text:
             return normalize_arxiv_to_pdf(href)
 
-    # 2) Any href that clearly points to a PDF
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if href.lower().endswith(".pdf"):
             return href
 
-    # 3) Any arXiv link; normalize to /pdf/{id}.pdf
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if "arxiv.org" in href:
             return normalize_arxiv_to_pdf(href)
 
-    # 4) Last-resort: regex search in raw HTML
     m = re.search(r'href="(https?://[^"]+\.pdf)"', html)
     if m:
         return m.group(1)
@@ -170,7 +164,6 @@ async def gather_pdfs(limit: Optional[int] = None, concurrency: int = 10) -> Lis
             async with sem:
                 pdf = await resolve_pdf_for_paper(client, href)
                 if pdf:
-                    # normalize arXiv links
                     pdfs.add(normalize_arxiv_to_pdf(pdf))
 
         await asyncio.gather(*(worker(h) for h in hrefs))
@@ -190,13 +183,11 @@ def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
         if limit and idx > limit:
             break
 
-        # Title
         title_el = article.select_one("h3")
         title = title_el.get_text(strip=True) if title_el else None
         if not title:
             continue
 
-        # Link
         link_el = article.select_one("a[href^='/papers/']")
         if not link_el:
             continue
@@ -205,17 +196,14 @@ def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
             continue
         url = urljoin(BASE, href)
 
-        # Thumbnail
         thumb_el = article.select_one("img")
         thumbnail = thumb_el.get("src") if thumb_el and thumb_el.get("src") else None
         if thumbnail and thumbnail.startswith("/"):
             thumbnail = urljoin(BASE, thumbnail)
 
-        # Summary/description
         summary_el = article.select_one("p.line-clamp-2")
         description = summary_el.get_text(" ", strip=True) if summary_el else ""
 
-        # Authors & published date text
         authors_text = None
         published_text = None
         info_div = article.select_one("div.flex.items-center.text-sm.text-gray-400")

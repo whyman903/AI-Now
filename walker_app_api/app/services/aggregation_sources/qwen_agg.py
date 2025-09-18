@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-Scrape Qwen blog index:
-  https://qwenlm.github.io/blog/
-
-Extracts per post: title, date_iso, date_display, url, thumbnail
-- Parses the listing page (<article.post-entry>, <footer.entry-footer>, <a.entry-link>)
-- Optionally fetches each post page to pull og:image / twitter:image / first <img> as thumbnail
-
-Usage:
-  python qwen_blog_scrape.py [--csv out.csv] [--no-thumbs]
-"""
-
 import re
 import csv
 import json
@@ -47,9 +35,7 @@ def parse_date(text: str):
     if not text:
         return None, None
     disp = normalize(text)
-    # Try ISO from 'title' attribute first if present (the listing often has <span title="...">HumanDate</span>)
     try:
-        # If it's already ISO-ish
         dt = dateparser.parse(disp, fuzzy=True)
         return dt.isoformat(), disp
     except Exception:
@@ -62,12 +48,10 @@ def absolutize(url: str) -> str:
         return "https:" + url
     if url.startswith("/"):
         return urljoin(BASE, url)
-    # absolute or relative-to-index
     return url if bool(urlparse(url).scheme) else urljoin(INDEX_URL, url)
 
 def extract_thumbnail_from_post(html: str) -> str | None:
     soup = BeautifulSoup(html, "html.parser")
-    # Prefer og:image / twitter:image
     for sel, attr in [
         ('meta[property="og:image"]', "content"),
         ('meta[name="twitter:image"]', "content"),
@@ -75,8 +59,6 @@ def extract_thumbnail_from_post(html: str) -> str | None:
         m = soup.select_one(sel)
         if m and m.get(attr):
             return absolutize(m.get(attr))
-    # Fallback: first <img> within the post content
-    # Common themes use .post-content / .entry-content, but we’ll just pick any <article> then first <img>
     container = soup.select_one(".post-content, .entry-content, article")
     img = (container.select_one("img") if container else None) or soup.select_one("img")
     if img and img.get("src"):
@@ -87,11 +69,7 @@ def extract_index(html: str):
     soup = BeautifulSoup(html, "html.parser")
     posts = []
     seen = set()
-
-    # Primary: each <article class="post-entry"> ... <a class="entry-link" href="...">
-    # Also guard for duplicated fragments by de-duping on URL.
     for art in soup.select("article.post-entry"):
-        # URL
         a = art.select_one("a.entry-link[href]")
         if not a:
             continue
@@ -99,18 +77,14 @@ def extract_index(html: str):
         if url in seen:
             continue
 
-        # Title
         h2 = art.select_one("header.entry-header h2")
         title = normalize(h2.get_text(strip=True)) if h2 else None
 
-        # Date (human string is the text of footer.entry-footer > span; the ISO-ish is in its title=)
         date_span = art.select_one("footer.entry-footer span[title]") or art.select_one("footer.entry-footer span")
         date_text = None
         if date_span:
-            # Prefer machine string in title attr for ISO, but display keeps the human-readable
             title_attr = date_span.get("title")
             visible = date_span.get_text(strip=True)
-            # If title attr parses, use that; else parse visible
             iso = None
             if title_attr:
                 try:
@@ -133,18 +107,14 @@ def extract_index(html: str):
         })
         seen.add(url)
 
-    # Also support pages that place <a.entry-link> outside <article>
-    # (rare, but your pasted HTML had duplicates). We’ll add those missing items.
     for a in soup.select("a.entry-link[href]"):
         url = absolutize(a["href"])
         if url in seen:
             continue
-        # Try to locate the nearest title/footer around the anchor
         parent = a.parent
         title_node = None
         date_iso = date_display = None
 
-        # climb a bit to find a sibling header/footer
         ctx = parent
         for _ in range(4):
             if not ctx:
@@ -172,7 +142,7 @@ def extract_index(html: str):
             "date_display": date_display,
             "url": url,
             "thumbnail": None,
-            "author": 'Qwen', 
+            "author": 'Qwen',
             "type": "research_lab"
         })
         seen.add(url)
@@ -228,10 +198,8 @@ def main():
 
     items = scrape()
 
-    # Output JSON
     print(json.dumps(items, indent=2, ensure_ascii=False, default=str))
 
-    # Optional CSV
     if args.csv:
         with open(args.csv, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])

@@ -31,7 +31,6 @@ async def trigger_aggregation(
         Dict with aggregation trigger status
     """
     try:
-        # Run aggregation in background
         aggregator = get_content_aggregator()
         background_tasks.add_task(
             aggregator.aggregate_all_content
@@ -86,10 +85,8 @@ async def get_aggregation_status(db: Session = Depends(get_db)) -> Dict[str, Any
         Dict with aggregation status and content statistics
     """
     try:
-        # DB-level stats
         stats = ContentCRUD.get_content_stats(db)
 
-        # Source counts from the aggregator
         agg = get_content_aggregator()
         sources_summary = {
             'rss_feeds': len(agg.rss_sources),
