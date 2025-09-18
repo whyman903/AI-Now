@@ -6,10 +6,9 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from typing import Dict, Any
 import logging
 
-from app.services.content_aggregator_firecrawl import get_aggregator_firecrawl
+from app.services.content_aggregator import get_content_aggregator
 from app.crud.content import ContentCRUD
 from app.db.base import get_db
-from app.services.firecrawl_service import get_firecrawl_service
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
@@ -32,8 +31,8 @@ async def trigger_aggregation(
         Dict with aggregation trigger status
     """
     try:
-        # Run aggregation in background with Firecrawl
-        aggregator = get_aggregator_firecrawl()
+        # Run aggregation in background
+        aggregator = get_content_aggregator()
         background_tasks.add_task(
             aggregator.aggregate_all_content
         )
@@ -65,7 +64,7 @@ async def aggregate_now(hours_back: int = 24) -> Dict[str, Any]:
     try:
         logger.info(f"Starting immediate content aggregation for last {hours_back} hours")
         
-        aggregator = get_aggregator_firecrawl()
+        aggregator = get_content_aggregator()
         results = await aggregator.aggregate_all_content()
         
         return {
@@ -90,8 +89,8 @@ async def get_aggregation_status(db: Session = Depends(get_db)) -> Dict[str, Any
         # DB-level stats
         stats = ContentCRUD.get_content_stats(db)
 
-        # Source counts from Firecrawl-enabled aggregator
-        agg = get_aggregator_firecrawl()
+        # Source counts from the aggregator
+        agg = get_content_aggregator()
         sources_summary = {
             'rss_feeds': len(agg.rss_sources),
             'youtube_channels': len(agg.youtube_channels),
@@ -99,15 +98,12 @@ async def get_aggregation_status(db: Session = Depends(get_db)) -> Dict[str, Any
             'total': len(agg.rss_sources) + len(agg.youtube_channels) + len(agg.web_scraper_sources),
         }
 
-        # Firecrawl health
-        firecrawl_ok = await get_firecrawl_service().health_check()
-
         return {
             "status": "success",
             "data": {
                 **stats,
                 'sources': sources_summary,
-                'firecrawlHealthy': firecrawl_ok,
+                'firecrawlHealthy': None,
             },
         }
         

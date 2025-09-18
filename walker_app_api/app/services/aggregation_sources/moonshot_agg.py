@@ -18,7 +18,11 @@ import csv
 import json
 import time
 import argparse
+from typing import List, Dict, Any
 from urllib.parse import urljoin, urlparse
+from datetime import datetime, timezone
+
+from dateutil import parser as dateparser
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -169,34 +173,81 @@ def extract_items(driver):
 
     return items
 
+
+def _parse_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = dateparser.parse(value, fuzzy=True)
+    except Exception:
+        return None
+    if not dt:
+        return None
+    if dt.tzinfo:
+        try:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            pass
+    return dt
+
+
+def scrape(headless: bool = True) -> List[Dict[str, Any]]:
+    """Scrape Moonshot cards and return normalized content items."""
+    driver = build_driver(headless=headless)
+    try:
+        driver.get(BASE)
+        time.sleep(1.0)
+        try:
+            wait_for_cards(driver, timeout=30)
+        except TimeoutException:
+            pass
+        autoscroll(driver, pause=0.9, max_tries=20)
+        raw = extract_items(driver)
+    finally:
+        driver.quit()
+
+    normalized: List[Dict[str, Any]] = []
+    for item in raw:
+        published_at = _parse_date(item.get("date_iso") or item.get("date_display"))
+        normalized.append({
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "author": item.get("author", "Moonshot"),
+            "published_at": published_at,
+            "thumbnail_url": item.get("thumbnail"),
+            "type": item.get("type", "research_lab"),
+            "meta_data": {
+                "source_name": "Moonshot",
+                "category": "ai_ml",
+                "date_iso": item.get("date_iso"),
+                "date_display": item.get("date_display"),
+                "extraction_method": "selenium",
+            },
+        })
+    return normalized
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", help="Also write CSV to this path")
     ap.add_argument("--no-headless", action="store_true", help="Run with visible Chrome")
     args = ap.parse_args()
 
-    driver = build_driver(headless=not args.no_headless)
-    try:
-        driver.get(BASE)
-        # Give React/Vue hydration a moment
-        time.sleep(1.0)
-        wait_for_cards(driver, timeout=30)
-        autoscroll(driver, pause=0.9, max_tries=20)
-        data = extract_items(driver)
-    except TimeoutException:
-        # Extract whatever is visible
-        data = extract_items(driver)
-    finally:
-        driver.quit()
-
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+    data = scrape(headless=not args.no_headless)
+    print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
     if args.csv:
         with open(args.csv, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])
             w.writeheader()
             for row in data:
-                w.writerow(row)
+                meta = row.get("meta_data", {})
+                w.writerow({
+                    "title": row.get("title"),
+                    "date_iso": meta.get("date_iso"),
+                    "date_display": meta.get("date_display"),
+                    "thumbnail": row.get("thumbnail_url"),
+                    "url": row.get("url"),
+                })
 
 if __name__ == "__main__":
     main()

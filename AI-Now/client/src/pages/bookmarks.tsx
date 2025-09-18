@@ -43,7 +43,7 @@ export default function Bookmarks() {
   const [editingFolder, setEditingFolder] = useState<BookmarkFolder | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [newFolderColor, setNewFolderColor] = useState("#3b82f6");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 

@@ -11,7 +11,7 @@ import { Clock, RefreshCw, Podcast, LogIn } from "lucide-react";
 export default function ReadingHistory() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   // Redirect to login if not authenticated
   useEffect(() => {

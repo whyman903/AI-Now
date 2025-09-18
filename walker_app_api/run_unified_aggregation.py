@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.db.base import create_tables, SessionLocal, ensure_content_items_compat_schema
 from app.db.models import ContentItem
-from app.services.content_aggregator_firecrawl import get_aggregator_firecrawl
+from app.services.content_aggregator import get_content_aggregator
 
 
 async def main():
@@ -31,7 +31,7 @@ async def main():
 
     # Prepare shared HTTP client and inject
     client = httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={'User-Agent': 'TrendCurate/1.0'})
-    aggregator = get_aggregator_firecrawl()
+    aggregator = get_content_aggregator()
     aggregator.set_http_client(client)
 
     try:

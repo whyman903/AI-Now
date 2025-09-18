@@ -4,7 +4,7 @@ Verify all content sources without writing to the database.
 Checks:
 - RSS feeds (feedparser)
 - YouTube channels via RSS
-- Firecrawl-backed scrapers (Anthropic, Qwen, HF Papers)
+- Selenium/BeautifulSoup scrapers (Anthropic, Qwen, xAI, Moonshot, OpenAI Research)
 - BeautifulSoup Hugging Face trending PDF collector
 
 Results are printed as JSON for easy inspection.
@@ -67,31 +67,23 @@ async def verify_youtube(client: httpx.AsyncClient, channels: List[Dict[str, Any
     return results
 
 
-async def verify_firecrawl(sources: List[Dict[str, Any]]):
-    # Lazy import to avoid DB config on module import time
-    from app.services.firecrawl_service import FirecrawlService
-    fc = FirecrawlService()
-    if not fc.firecrawl:
-        return {"firecrawl_available": False, "error": "Firecrawl not initialized (missing or invalid API key)"}
-
-    per_source = []
+async def verify_selenium_scrapers(sources: List[Dict[str, Any]]):
+    results = []
     for src in sources:
+        scrape = src.get("scrape_func")
+        if not callable(scrape):
+            results.append({"name": src.get("name"), "ok": False, "error": "Missing scrape function"})
+            continue
         try:
-            arts = await fc.extract_articles_from_page(src["url"], src)
-            per_source.append({
-                "name": src["name"],
-                "url": src["url"],
-                "ok": len(arts) > 0,
-                "items": len(arts)
+            items = await asyncio.to_thread(scrape)
+            results.append({
+                "name": src.get("name"),
+                "ok": bool(items),
+                "items": len(items) if items else 0,
             })
         except Exception as e:
-            per_source.append({
-                "name": src["name"],
-                "url": src["url"],
-                "ok": False,
-                "error": str(e)
-            })
-    return {"firecrawl_available": True, "sources": per_source}
+            results.append({"name": src.get("name"), "ok": False, "error": str(e)})
+    return {"scrapers": results}
 
 
 async def verify_hf_bs4():
@@ -108,22 +100,22 @@ async def main():
     _load_env()
 
     # Avoid importing aggregator until env is set
-    from app.services.content_aggregator_firecrawl import ContentAggregatorFirecrawl
+    from app.services.content_aggregator import ContentAggregator
 
-    ag = ContentAggregatorFirecrawl()
+    ag = ContentAggregator()
 
     # Shared HTTP client
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={'User-Agent': 'SourceVerifier/1.0'}) as client:
         rss_res = await verify_rss(client, ag.rss_sources)
         yt_res = await verify_youtube(client, ag.youtube_channels)
 
-    fc_res = await verify_firecrawl(ag.web_scraper_sources)
+    fc_res = await verify_selenium_scrapers(ag.web_scraper_sources)
     hf_res = await verify_hf_bs4()
 
     out = {
         "rss": rss_res,
         "youtube": yt_res,
-        "firecrawl": fc_res,
+        "scrapers": fc_res,
         "huggingface_bs4": hf_res,
     }
     print(json.dumps(out, indent=2))
@@ -131,4 +123,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

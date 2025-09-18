@@ -56,8 +56,8 @@ def get_content(
             asc(ContentItem.meta_data['rank'].as_float()).nullslast()
         )
     else:
-        # Choose ordering strategy
-        strategy = (order or 'interleave').lower()
+        # Choose ordering strategy (default to recency)
+        strategy = (order or 'recent').lower()
         if strategy == 'recent':
             # Plain recent ordering
             query = base_query.order_by(ContentItem.published_at.desc())
@@ -94,6 +94,7 @@ def get_content(
             "type": item_dict.get("type"),
             "title": item_dict.get("title"),
             "url": item_dict.get("url"),
+            "sourceUrl": item_dict.get("url"),
             "author": item_dict.get("author"),
             "publishedAt": _to_iso_utc(item_dict.get("published_at")),
             "thumbnailUrl": item_dict.get("thumbnail_url"),
@@ -135,6 +136,7 @@ def get_trending_content(
             "type": item_dict.get("type"),
             "title": item_dict.get("title"),
             "url": item_dict.get("url"),
+            "sourceUrl": item_dict.get("url"),
             "author": item_dict.get("author"),
             "publishedAt": _to_iso_utc(item_dict.get("published_at")),
             "thumbnailUrl": item_dict.get("thumbnail_url"),
@@ -188,6 +190,7 @@ def get_content_item(
         "type": item_dict.get("type"),
         "title": item_dict.get("title"),
         "url": item_dict.get("url"),
+        "sourceUrl": item_dict.get("url"),
         "author": item_dict.get("author"),
         "publishedAt": _to_iso_utc(item_dict.get("published_at")),
         "thumbnailUrl": item_dict.get("thumbnail_url"),

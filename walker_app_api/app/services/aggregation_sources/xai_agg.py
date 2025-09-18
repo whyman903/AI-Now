@@ -15,10 +15,11 @@ import json
 import csv
 import time
 import argparse
+from typing import List, Dict, Any
 from urllib.parse import urljoin
-from datetime import datetime
+from datetime import datetime, timezone
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from dateutil import parser as dateparser
 
 from selenium import webdriver
@@ -34,6 +35,11 @@ BASE = "https://x.ai"
 START_URL = "https://x.ai/news"
 
 BG_URL_RE = re.compile(r'url\((["\']?)(.*?)\1\)')
+MONTH_NAME_RE = re.compile(
+    r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\b",
+    re.IGNORECASE,
+)
+YEAR_RE = re.compile(r"\b\d{4}\b")
 
 def build_driver(headless: bool = True) -> webdriver.Chrome:
     opts = Options()
@@ -91,6 +97,18 @@ def extract_bg_url(style_value: str) -> str | None:
     m = BG_URL_RE.search(style_value)
     return m.group(2) if m else None
 
+
+def _looks_like_date_text(text: str | None) -> bool:
+    if not text:
+        return False
+    if YEAR_RE.search(text):
+        return True
+    if MONTH_NAME_RE.search(text):
+        return True
+    if re.search(r"\b\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}\b", text):
+        return True
+    return False
+
 def parse_date(d: str) -> tuple[str | None, str | None]:
     if not d:
         return None, None
@@ -134,28 +152,74 @@ def extract_from_html(html: str):
             # fallback: anchor text itself
             title = normalize(a.get_text(strip=True)) or None
 
-        # Find a reasonable "card wrapper": climb parents until we see a block that contains date + possibly image
+        # Find a reasonable "card wrapper": climb parents until we find one that contains
+        # date-like text. Fall back to the first parent that contains a background image.
         wrapper = None
-        cur = a
-        for _ in range(8):  # climb up a few levels max
-            cur = cur.parent
-            if not cur or getattr(cur, "name", None) is None:
+        background_parent: Tag | None = None
+        cur: Tag | None = a
+        for _ in range(12):
+            cur = cur.parent if isinstance(cur, Tag) else None
+            if not isinstance(cur, Tag):
                 break
-            # Heuristics: a wrapper that has date node and/or the background-image block and flex layout
-            has_date = bool(cur.select_one("p.mono-tag"))
-            has_bg = bool(cur.select_one("div[style*='background-image']"))
-            if has_date or has_bg:
-                wrapper = cur
-                # keep climbing a bit to find the topmost such wrapper (but bounded)
+
+            if background_parent is None and cur.select_one("div[style*='background-image']"):
+                background_parent = cur
+
+            candidate_nodes = cur.select(
+                "time[datetime], .mono-tag, p[class*='mono'], span[class*='mono']"
+            )
+            for node in candidate_nodes:
+                raw_text = node.get("datetime") if node.name == "time" else node.get_text(" ", strip=True)
+                if _looks_like_date_text(normalize(raw_text)):
+                    wrapper = cur
+                    break
+            if wrapper:
+                break
+
         if wrapper is None:
-            wrapper = a.parent
+            wrapper = background_parent or a.parent
+
+        if background_parent is None and isinstance(wrapper, Tag):
+            bg_cursor: Tag | None = wrapper
+            for _ in range(6):
+                bg_cursor = bg_cursor.parent if isinstance(bg_cursor, Tag) else None
+                if not isinstance(bg_cursor, Tag):
+                    break
+                if bg_cursor.select_one("div[style*='background-image']"):
+                    background_parent = bg_cursor
+                    break
 
         # Date
-        date_node = wrapper.select_one("p.mono-tag") if wrapper else None
-        date_iso, date_display = parse_date(date_node.get_text(strip=True) if date_node else None)
+        date_iso = None
+        date_display = None
+        fallback_display = None
+        candidates = []
+        if wrapper:
+            candidates = wrapper.select(
+                "time[datetime], .mono-tag, p[class*='mono'], span[class*='mono']"
+            )
+
+        for node in candidates:
+            raw = node.get("datetime") if node.name == "time" else node.get_text(" ", strip=True)
+            raw = normalize(raw)
+            if not raw:
+                continue
+            iso, disp = parse_date(raw)
+            if iso:
+                date_iso, date_display = iso, disp
+                break
+            if not fallback_display and _looks_like_date_text(raw):
+                fallback_display = disp
+
+        if not date_display and fallback_display:
+            date_display = fallback_display
 
         # Thumbnail (background-image in sibling/child div)
-        bg_div = wrapper.select_one("div[style*='background-image']") if wrapper else None
+        bg_div = None
+        if wrapper:
+            bg_div = wrapper.select_one("div[style*='background-image']")
+        if not bg_div and background_parent:
+            bg_div = background_parent.select_one("div[style*='background-image']")
         thumb_rel = extract_bg_url(bg_div.get("style")) if bg_div else None
         thumbnail = urljoin(BASE, thumb_rel) if thumb_rel else None
 
@@ -173,29 +237,70 @@ def extract_from_html(html: str):
 
     return items
 
+
+def _parse_iso(dt_str: str | None) -> datetime | None:
+    if not dt_str:
+        return None
+    try:
+        dt = dateparser.parse(dt_str, fuzzy=True)
+    except Exception:
+        return None
+    if not dt:
+        return None
+    if dt.tzinfo:
+        try:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            pass
+    return dt
+
+
+def scrape(headless: bool = True) -> List[Dict[str, Any]]:
+    """Scrape xAI news posts and return normalized content items."""
+    driver = build_driver(headless=headless)
+    try:
+        driver.get(START_URL)
+        time.sleep(1.0)
+        try:
+            wait_for_news(driver, timeout=25)
+        except TimeoutException:
+            pass
+        autoscroll_to_bottom(driver, pause=0.9, max_tries=20)
+        html = driver.page_source
+    finally:
+        driver.quit()
+
+    raw = extract_from_html(html)
+    normalized: List[Dict[str, Any]] = []
+    for item in raw:
+        published_at = _parse_iso(item.get("date_iso") or item.get("date_display"))
+        normalized.append({
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "author": item.get("author", "xAI"),
+            "published_at": published_at,
+            "thumbnail_url": item.get("thumbnail"),
+            "type": item.get("type", "research_lab"),
+            "meta_data": {
+                "source_name": "xAI",
+                "category": "ai_ml",
+                "date_iso": item.get("date_iso"),
+                "date_display": item.get("date_display"),
+                "extraction_method": "selenium",
+            },
+        })
+    return normalized
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", help="Write results to CSV as well")
     ap.add_argument("--no-headless", action="store_true", help="Run with a visible browser")
     args = ap.parse_args()
 
-    driver = build_driver(headless=not args.no_headless)
-    try:
-        driver.get(START_URL)
-        # Slight delay lets client-side layout settle
-        time.sleep(1.0)
-        wait_for_news(driver, timeout=25)
-        autoscroll_to_bottom(driver, pause=0.9, max_tries=20)
-        html = driver.page_source
-    except TimeoutException:
-        html = driver.page_source
-    finally:
-        driver.quit()
-
-    data = extract_from_html(html)
+    data = scrape(headless=not args.no_headless)
 
     # Emit JSON
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+    print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
     # Optional CSV
     if args.csv:
@@ -203,7 +308,14 @@ def main():
             w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])
             w.writeheader()
             for row in data:
-                w.writerow(row)
+                meta = row.get("meta_data", {})
+                w.writerow({
+                    "title": row.get("title"),
+                    "date_iso": meta.get("date_iso"),
+                    "date_display": meta.get("date_display"),
+                    "thumbnail": row.get("thumbnail_url"),
+                    "url": row.get("url"),
+                })
 
 if __name__ == "__main__":
     main()

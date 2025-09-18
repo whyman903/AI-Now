@@ -5,12 +5,15 @@ import asyncio
 import random
 import time
 import json
-from typing import List, Set, Optional
+from typing import List, Set, Optional, Dict, Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 import argparse
+from datetime import datetime, timezone
+from dateutil import parser as dateparser
+
 
 BASE = "https://huggingface.co"
 TRENDING = f"{BASE}/papers/trending"
@@ -148,7 +151,7 @@ async def resolve_pdf_for_paper(client: httpx.AsyncClient, href: str) -> Optiona
 
 
 async def gather_pdfs(limit: Optional[int] = None, concurrency: int = 10) -> List[str]:
-    async with httpx.AsyncClient(follow_redirects=True, http2=True, timeout=30.0) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
         trending_html = await fetch_text(client, TRENDING)
         if not trending_html:
             raise RuntimeError("Failed to fetch trending page.")
@@ -172,6 +175,115 @@ async def gather_pdfs(limit: Optional[int] = None, concurrency: int = 10) -> Lis
 
         await asyncio.gather(*(worker(h) for h in hrefs))
         return sorted(pdfs)
+
+
+def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
+    """Scrape trending Hugging Face papers and return normalized content items."""
+    html = httpx.get(TRENDING, headers=HEADERS, timeout=30.0).text
+    soup = BeautifulSoup(html, "html.parser")
+
+    articles = soup.select("article")
+    results: List[Dict[str, Any]] = []
+    scraped_at = datetime.now(timezone.utc).isoformat()
+
+    for idx, article in enumerate(articles, start=1):
+        if limit and idx > limit:
+            break
+
+        # Title
+        title_el = article.select_one("h3")
+        title = title_el.get_text(strip=True) if title_el else None
+        if not title:
+            continue
+
+        # Link
+        link_el = article.select_one("a[href^='/papers/']")
+        if not link_el:
+            continue
+        href = link_el.get("href", "")
+        if not href:
+            continue
+        url = urljoin(BASE, href)
+
+        # Thumbnail
+        thumb_el = article.select_one("img")
+        thumbnail = thumb_el.get("src") if thumb_el and thumb_el.get("src") else None
+        if thumbnail and thumbnail.startswith("/"):
+            thumbnail = urljoin(BASE, thumbnail)
+
+        # Summary/description
+        summary_el = article.select_one("p.line-clamp-2")
+        description = summary_el.get_text(" ", strip=True) if summary_el else ""
+
+        # Authors & published date text
+        authors_text = None
+        published_text = None
+        info_div = article.select_one("div.flex.items-center.text-sm.text-gray-400")
+        if not info_div:
+            info_div = article.select_one("div.flex.items-center.text-sm.text-gray-500")
+        if not info_div:
+            for div in article.find_all("div", class_=True):
+                classes = div.get("class", [])
+                if "items-center" in classes and "text-sm" in classes:
+                    text = div.get_text(" ", strip=True)
+                    if text and "author" in text.lower():
+                        info_div = div
+                        break
+
+        if info_div:
+            span_texts = [span.get_text(" ", strip=True) for span in info_div.find_all("span") if span.get_text(strip=True)]
+            if span_texts:
+                authors_text = span_texts[0]
+            for candidate in span_texts[1:]:
+                stripped = candidate.strip()
+                if not stripped or stripped == "·":
+                    continue
+                if "published" in stripped.lower() or stripped:
+                    published_text = candidate
+                    break
+            if published_text and published_text.lower().startswith("published on"):
+                published_text = published_text[len("Published on"):].strip()
+
+        published_at = None
+        if published_text:
+            try:
+                dt = dateparser.parse(published_text)
+                if dt:
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    else:
+                        dt = dt.astimezone(timezone.utc)
+                    published_at = dt
+            except Exception:
+                published_at = None
+
+        meta: Dict[str, Any] = {
+            "source_name": "Hugging Face Papers",
+            "category": "ai_ml",
+            "rank": idx,
+            "scraped_date": scraped_at,
+            "extraction_method": "huggingface_trending",
+        }
+        if description:
+            meta["description"] = description
+        if authors_text:
+            meta["authors"] = authors_text
+        if published_text:
+            meta["date_display"] = published_text
+
+        results.append(
+            {
+                "type": "research_paper",
+                "title": title,
+                "url": url,
+                "author": "Hugging Face Papers",
+                "published_at": published_at,
+                "thumbnail_url": thumbnail,
+                "meta_data": meta,
+            }
+        )
+
+    return results
 
 
 def main():

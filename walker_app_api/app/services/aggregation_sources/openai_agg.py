@@ -15,9 +15,12 @@ import json
 import csv
 import time
 import argparse
+from typing import List, Dict, Any
 from urllib.parse import urljoin
+from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup
+from dateutil import parser as dateparser
 
 # --- Selenium imports
 from selenium import webdriver
@@ -158,28 +161,69 @@ def extract_from_html(html: str):
             seen.add(u)
     return deduped
 
+
+def _parse_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = dateparser.parse(value, fuzzy=True)
+    except Exception:
+        return None
+    if not dt:
+        return None
+    if dt.tzinfo:
+        try:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            pass
+    return dt
+
+
+def scrape(headless: bool = True) -> List[Dict[str, Any]]:
+    """Scrape OpenAI Research grid and return normalized items."""
+    driver = build_driver(headless=headless)
+    try:
+        driver.get(START_URL)
+        try:
+            wait_for_grid(driver, timeout=25)
+        except TimeoutException:
+            pass
+        autoscroll_to_bottom(driver, pause=0.9, max_tries=24)
+        html = driver.page_source
+    finally:
+        driver.quit()
+
+    raw = extract_from_html(html)
+    normalized: List[Dict[str, Any]] = []
+    for item in raw:
+        published_at = _parse_date(item.get("date_iso") or item.get("date_display"))
+        normalized.append({
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "author": item.get("author", "OpenAI"),
+            "published_at": published_at,
+            "thumbnail_url": item.get("thumbnail"),
+            "type": item.get("type", "research_lab"),
+            "meta_data": {
+                "source_name": "OpenAI Research",
+                "category": "ai_ml",
+                "date_iso": item.get("date_iso"),
+                "date_display": item.get("date_display"),
+                "extraction_method": "selenium",
+            },
+        })
+    return normalized
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", help="Also write results to CSV")
     ap.add_argument("--no-headless", action="store_true", help="Run with a visible browser window")
     args = ap.parse_args()
 
-    driver = build_driver(headless=not args.no_headless)
-    try:
-        driver.get(START_URL)
-        wait_for_grid(driver, timeout=25)
-        autoscroll_to_bottom(driver, pause=0.9, max_tries=24)
-        html = driver.page_source
-    except TimeoutException:
-        # Even if wait timed out, try to parse what we have
-        html = driver.page_source
-    finally:
-        driver.quit()
-
-    data = extract_from_html(html)
+    data = scrape(headless=not args.no_headless)
 
     # Print JSON to stdout
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+    print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
     # Optional CSV
     if args.csv:
@@ -187,7 +231,14 @@ def main():
             w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])
             w.writeheader()
             for row in data:
-                w.writerow(row)
+                meta = row.get("meta_data", {})
+                w.writerow({
+                    "title": row.get("title"),
+                    "date_iso": meta.get("date_iso"),
+                    "date_display": meta.get("date_display"),
+                    "thumbnail": row.get("thumbnail_url"),
+                    "url": row.get("url"),
+                })
 
 if __name__ == "__main__":
     main()

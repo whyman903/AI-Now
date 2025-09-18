@@ -15,8 +15,9 @@ import re
 import csv
 import json
 import argparse
+from typing import List, Dict, Any
 from urllib.parse import urljoin, urlparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
@@ -178,16 +179,57 @@ def extract_index(html: str):
 
     return posts
 
+
+def _parse_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = dateparser.parse(value, fuzzy=True)
+    except Exception:
+        return None
+    if not dt:
+        return None
+    if dt.tzinfo:
+        try:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            pass
+    return dt
+
+
+def scrape() -> List[Dict[str, Any]]:
+    """Scrape the Qwen blog index and return normalized content items."""
+    index_html = fetch(INDEX_URL)
+    raw_items = extract_index(index_html)
+    normalized: List[Dict[str, Any]] = []
+    for item in raw_items:
+        published_at = _parse_date(item.get("date_iso") or item.get("date_display"))
+        normalized.append({
+            "title": item.get("title"),
+            "url": item.get("url"),
+            "author": item.get("author", "Qwen"),
+            "published_at": published_at,
+            "thumbnail_url": item.get("thumbnail"),
+            "type": item.get("type", "research_lab"),
+            "meta_data": {
+                "source_name": "Qwen",
+                "category": "ai_ml",
+                "date_iso": item.get("date_iso"),
+                "date_display": item.get("date_display"),
+                "extraction_method": "requests",
+            },
+        })
+    return normalized
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", help="Write results to CSV at this path")
     args = ap.parse_args()
 
-    index_html = fetch(INDEX_URL)
-    items = extract_index(index_html)
+    items = scrape()
 
     # Output JSON
-    print(json.dumps(items, indent=2, ensure_ascii=False))
+    print(json.dumps(items, indent=2, ensure_ascii=False, default=str))
 
     # Optional CSV
     if args.csv:
@@ -195,7 +237,14 @@ def main():
             w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])
             w.writeheader()
             for row in items:
-                w.writerow(row)
+                meta = row.get("meta_data", {})
+                w.writerow({
+                    "title": row.get("title"),
+                    "date_iso": meta.get("date_iso"),
+                    "date_display": meta.get("date_display"),
+                    "thumbnail": row.get("thumbnail_url"),
+                    "url": row.get("url"),
+                })
 
 if __name__ == "__main__":
     main()

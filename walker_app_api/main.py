@@ -24,8 +24,8 @@ async def lifespan(app: FastAPI):
         headers={'User-Agent': 'Mozilla/5.0 (compatible; ContentAggregator/1.0)'}
     )
     try:
-        from app.services.content_aggregator_firecrawl import get_aggregator_firecrawl
-        get_aggregator_firecrawl().set_http_client(app.state.http_client)
+        from app.services.content_aggregator import get_content_aggregator
+        get_content_aggregator().set_http_client(app.state.http_client)
     except Exception as e:
         logger.warning(f"Unable to inject HTTP client into aggregator: {e}")
 
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
             db.close()
         if count == 0:
             logger.info("No content found. Triggering initial aggregation in background...")
-            agg = get_aggregator_firecrawl()
+            agg = get_content_aggregator()
             import asyncio as _asyncio
             _asyncio.create_task(agg.aggregate_all_content())
     except Exception as e:

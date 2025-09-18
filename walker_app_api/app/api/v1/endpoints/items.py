@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Dict, Any
-from app.services.content_aggregator_firecrawl import get_aggregator_firecrawl
+from app.services.content_aggregator import get_content_aggregator
 
 router = APIRouter()
-aggregator = get_aggregator_firecrawl()
+aggregator = get_content_aggregator()
 
 @router.get("/sources")
 def get_content_sources():

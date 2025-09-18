@@ -16,7 +16,7 @@ export default function Home() {
   const { toast } = useToast();
   const [cardSize, setCardSize] = useState(1);
   const [filteredContent, setFilteredContent] = useState<any[] | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   const {
     data,
