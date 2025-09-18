@@ -1,9 +1,3 @@
-"""
-Unified content aggregation pipeline.
-Runs RSS feeds, YouTube RSS channels, and Selenium/BeautifulSoup scrapers,
-then persists normalized items into the shared database.
-"""
-
 from __future__ import annotations
 
 import asyncio

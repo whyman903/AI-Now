@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 import re
-import csv
-import json
-import argparse
 from typing import List, Dict, Any
 from urllib.parse import urljoin, urlparse
 from datetime import datetime, timezone
@@ -190,29 +187,3 @@ def scrape() -> List[Dict[str, Any]]:
             },
         })
     return normalized
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", help="Write results to CSV at this path")
-    args = ap.parse_args()
-
-    items = scrape()
-
-    print(json.dumps(items, indent=2, ensure_ascii=False, default=str))
-
-    if args.csv:
-        with open(args.csv, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])
-            w.writeheader()
-            for row in items:
-                meta = row.get("meta_data", {})
-                w.writerow({
-                    "title": row.get("title"),
-                    "date_iso": meta.get("date_iso"),
-                    "date_display": meta.get("date_display"),
-                    "thumbnail": row.get("thumbnail_url"),
-                    "url": row.get("url"),
-                })
-
-if __name__ == "__main__":
-    main()

@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 import re
-import csv
-import json
 import time
-import argparse
 from typing import List, Dict, Any
 from urllib.parse import urljoin, urlparse
 from datetime import datetime, timezone
@@ -206,29 +203,3 @@ def scrape(headless: bool = True) -> List[Dict[str, Any]]:
             },
         })
     return normalized
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", help="Also write CSV to this path")
-    ap.add_argument("--no-headless", action="store_true", help="Run with visible Chrome")
-    args = ap.parse_args()
-
-    data = scrape(headless=not args.no_headless)
-    print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
-
-    if args.csv:
-        with open(args.csv, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["title", "date_iso", "date_display", "thumbnail", "url"])
-            w.writeheader()
-            for row in data:
-                meta = row.get("meta_data", {})
-                w.writerow({
-                    "title": row.get("title"),
-                    "date_iso": meta.get("date_iso"),
-                    "date_display": meta.get("date_display"),
-                    "thumbnail": row.get("thumbnail_url"),
-                    "url": row.get("url"),
-                })
-
-if __name__ == "__main__":
-    main()

@@ -301,7 +301,7 @@ function ArticleCard({ item, layout }: ArticleCardProps) {
 
   return (
     <div
-      className={`group cursor-pointer flex ${currentLayout.flexDirection} border p-4 rounded-2xl shadow-none hover:shadow-md transition-shadow duration-300 w-full h-full overflow-hidden ${getCardStyleClasses()}`}
+      className={`group cursor-pointer flex ${currentLayout.flexDirection} border p-4 rounded-2xl shadow-none hover:shadow-xl transition-shadow duration-300 w-full h-full overflow-hidden ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
       {!hideImage && (
@@ -312,7 +312,7 @@ function ArticleCard({ item, layout }: ArticleCardProps) {
             loading="lazy"
             decoding="async"
             sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 100vw"
-            className="max-w-full max-h-full object-contain"
+            className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-300"
             onError={() => setHideImage(true)}
           />
         </div>
