@@ -5,15 +5,6 @@ export const API_CONFIG = {
 };
 
 export const API_ENDPOINTS = {
-  // Auth endpoints
-  AUTH: {
-    SIGNUP: `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/auth/signup`,
-    LOGIN: `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/auth/login`,
-    ME: `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/auth/me`,
-  },
-  // Content endpoints  
   CONTENT: `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/content`,
-  // User endpoints
-  USERS: `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/users`,
-  // Other endpoints will be added as needed
+  SOURCES: `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}/sources`,
 };

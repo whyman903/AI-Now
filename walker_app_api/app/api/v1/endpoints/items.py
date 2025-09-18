@@ -5,6 +5,10 @@ from app.services.content_aggregator import get_content_aggregator
 router = APIRouter()
 aggregator = get_content_aggregator()
 
+
+def _slugify(name: str) -> str:
+    return name.lower().replace(" ", "-")
+
 @router.get("/sources")
 def get_content_sources():
     """Get all configured RSS sources from the aggregator"""
@@ -68,3 +72,33 @@ async def refresh_specific_source(source_name: str):
         "items_fetched": result.get('total_new_items', 0),
         "status": "success"
     }
+
+
+@router.get("/filters/labs")
+def get_lab_filters():
+    """Return available lab-style sources for client-side filtering."""
+
+    combined_sources = (
+        aggregator.web_scraper_sources
+        + aggregator.youtube_channels
+        + aggregator.rss_sources
+    )
+
+    seen = set()
+    labs = []
+    for source in combined_sources:
+        label = source.get("name")
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        labs.append(
+            {
+                "id": _slugify(label),
+                "label": label,
+                "category": source.get("category"),
+                "source_type": source.get("type") or source.get("category"),
+            }
+        )
+
+    labs.sort(key=lambda entry: entry["label"].lower())
+    return {"labs": labs}

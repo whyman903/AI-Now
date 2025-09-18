@@ -45,7 +45,7 @@ class ContentAggregator:
         self.rss_sources: List[Dict[str, Any]] = [
             # {"name": "OpenAI Blog", "url": "https://openai.com/blog/rss.xml", "category": "ai_ml", "type": "blog"},
            # {"name": "Google AI Blog", "url": "https://research.google/blog/rss", "category": "ai_ml", "type": "blog"},
-            {"name": "DeepMind", "url": "https://deepmind.google/blog/rss.xml", "category": "ai_ml", "type": "research_lab"},
+            {"name": "GoogleDeepMind", "url": "https://deepmind.google/blog/rss.xml", "category": "ai_ml", "type": "research_lab"},
             #{"name": "Microsoft Research", "url": "https://www.microsoft.com/en-us/research/feed/", "category": "ai_ml", "type": "blog"},
             # {"name": "NVIDIA Developer Blog", "url": "https://developer.nvidia.com/blog/feed/", "category": "ai_ml", "type": "blog"},
             #{"name": "Y Combinator Podcast", "url": "https://www.ycombinator.com/blog/feed/", "category": "startup", "type": "podcast"},

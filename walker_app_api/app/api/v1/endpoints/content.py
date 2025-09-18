@@ -30,6 +30,7 @@ def get_content(
     content_type: Optional[str] = Query(None),
     exclude_type: Optional[str] = Query(None),
     order: Optional[str] = Query(None, description="Ordering strategy: 'recent' or 'interleave' (default). For research_paper, rank ordering applies."),
+    source: Optional[str] = Query(None, description="Filter by content author."),
     db: Session = Depends(get_db)
 ):
     """
@@ -37,9 +38,12 @@ def get_content(
     This method interleaves content types to ensure variety in the feed
     while still prioritizing the most recently published items within each type.
     """
-    
+
     # Base query to work with
     base_query = db.query(ContentItem)
+
+    if source:
+        base_query = base_query.filter(ContentItem.author == source)
     
     # Filter by content type if specified
     if content_type:
@@ -115,17 +119,19 @@ def get_content(
 def get_trending_content(
     limit: int = Query(20, ge=1, le=50),
     hours: int = Query(24, ge=1, le=168),
+    source: Optional[str] = Query(None, description="Filter by content author."),
     db: Session = Depends(get_db)
 ):
     """Get trending content from database"""
     
     since = datetime.now() - timedelta(hours=hours)
     
-    items = db.query(ContentItem)\
-        .filter(ContentItem.published_at >= since)\
-        .order_by(ContentItem.published_at.desc())\
-        .limit(limit)\
-        .all()
+    query = db.query(ContentItem).filter(ContentItem.published_at >= since)
+
+    if source:
+        query = query.filter(ContentItem.author == source)
+
+    items = query.order_by(ContentItem.published_at.desc()).limit(limit).all()
     
     # Convert to camelCase for frontend compatibility
     serialized_items = []

@@ -1,15 +1,11 @@
-from fastapi import FastAPI, WebSocket, Depends, HTTPException, Query
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-from starlette.websockets import WebSocketDisconnect
-from sqlalchemy.orm import Session
 import httpx
 from contextlib import asynccontextmanager
 
 from app.api.v1.api import api_router
 from app.core.config import settings
-from app.db.base import get_db
-from jose import JWTError, jwt
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,37 +79,6 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-
-
-@app.websocket("/api/v1/ws")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    token: str = Query(...),
-    db: Session = Depends(get_db)
-):
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        user_id = payload.get("sub")
-        if not user_id:
-            await websocket.close(code=1008)
-            return
-        
-        from app.db.models import User
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            await websocket.close(code=1008)
-            return
-    except JWTError:
-        await websocket.close(code=1008)
-        return
-
-    await websocket.accept()
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Message text was: {data}")
-    except WebSocketDisconnect:
-        pass
 
 if __name__ == "__main__":
     import uvicorn

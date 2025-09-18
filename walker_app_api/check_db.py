@@ -27,12 +27,8 @@ def drop_all_tables():
     with engine.connect() as conn:
         # Drop all tables in reverse dependency order
         tables_to_drop = [
-            "content_fetch_logs",
-            "recommendations",
-            "user_interactions", 
-            "user_profiles",
-            "content",
-            "users"
+            "content_items",
+            "feed_states",
         ]
         
         for table in tables_to_drop:

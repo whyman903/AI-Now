@@ -53,8 +53,33 @@ def get_db():
 
 def create_tables():
     """Create all tables in the database"""
-    from app.db.models import User, ContentItem, UserInteraction, BookmarkFolder, UserBookmark
+    from app.db import models  # Ensure model metadata is registered
+
     Base.metadata.create_all(bind=engine)
+    _drop_legacy_user_tables()
+
+
+def _drop_legacy_user_tables() -> None:
+    """Remove legacy user-centric tables that are no longer required."""
+    legacy_tables = [
+        "user_bookmarks",
+        "bookmark_folders",
+        "user_interactions",
+        "users",
+    ]
+
+    try:
+        with engine.begin() as conn:
+            existing = set(inspect(conn).get_table_names())
+            for table in legacy_tables:
+                if table not in existing:
+                    continue
+                if conn.dialect.name == "postgresql":
+                    conn.execute(text(f"DROP TABLE IF EXISTS {table} CASCADE"))
+                else:
+                    conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+    except Exception as exc:
+        print(f"WARN: unable to drop legacy user tables: {exc}")
 
 
 def ensure_content_items_compat_schema():
