@@ -49,17 +49,46 @@ def absolutize(url: str) -> str:
 
 def extract_thumbnail_from_post(html: str) -> str | None:
     soup = BeautifulSoup(html, "html.parser")
+    
+    # First try meta tags, but validate they contain actual URLs not placeholders
     for sel, attr in [
         ('meta[property="og:image"]', "content"),
         ('meta[name="twitter:image"]', "content"),
     ]:
         m = soup.select_one(sel)
         if m and m.get(attr):
-            return absolutize(m.get(attr))
-    container = soup.select_one(".post-content, .entry-content, article")
-    img = (container.select_one("img") if container else None) or soup.select_one("img")
+            content = m.get(attr)
+            # Skip placeholder content
+            if content and not ("<" in content or ">" in content or "path" in content.lower() or "link" in content.lower()):
+                thumbnail = absolutize(content)
+                if thumbnail and thumbnail.startswith(("http://", "https://")):
+                    return thumbnail
+    
+    # Look for the first image in the main content area
+    container = soup.select_one(".post-content, .entry-content, article, main")
+    if container:
+        # Look for images in the content, preferring those with meaningful src attributes
+        for img in container.select("img"):
+            src = img.get("src")
+            if src and not src.startswith("data:"):
+                # Skip very small images (likely icons or decorative elements)
+                width = img.get("width")
+                height = img.get("height")
+                if width and height:
+                    try:
+                        if int(width) < 100 or int(height) < 100:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+                return absolutize(src)
+    
+    # Fallback: look for any image on the page
+    img = soup.select_one("img")
     if img and img.get("src"):
-        return absolutize(img["src"])
+        src = img.get("src")
+        if src and not src.startswith("data:"):
+            return absolutize(src)
+    
     return None
 
 def extract_index(html: str):
@@ -169,14 +198,25 @@ def scrape() -> List[Dict[str, Any]]:
     index_html = fetch(INDEX_URL)
     raw_items = extract_index(index_html)
     normalized: List[Dict[str, Any]] = []
+    
     for item in raw_items:
+        # Extract thumbnail from individual post page
+        thumbnail_url = None
+        if item.get("url"):
+            try:
+                post_html = fetch(item["url"])
+                thumbnail_url = extract_thumbnail_from_post(post_html)
+            except Exception as e:
+                print(f"Failed to fetch thumbnail for {item.get('url')}: {e}")
+                # Continue processing even if thumbnail extraction fails
+        
         published_at = _parse_date(item.get("date_iso") or item.get("date_display"))
         normalized.append({
             "title": item.get("title"),
             "url": item.get("url"),
             "author": item.get("author", "Qwen"),
             "published_at": published_at,
-            "thumbnail_url": item.get("thumbnail"),
+            "thumbnail_url": thumbnail_url,
             "type": item.get("type", "research_lab"),
             "meta_data": {
                 "source_name": "Qwen",

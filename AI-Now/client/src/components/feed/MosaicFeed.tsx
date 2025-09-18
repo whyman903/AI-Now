@@ -348,7 +348,7 @@ function ArticleCard({ item, layout }: ArticleCardProps) {
           )}
         </div>
 
-        <div className="flex items-center justify-between text-sm text-muted-foreground mt-2">
+        <div className="flex items-center justify-between text-sm text-muted-foreground mt-auto pt-2">
           <div className="font-medium truncate">
             {item.author || "Unknown"}
           </div>
