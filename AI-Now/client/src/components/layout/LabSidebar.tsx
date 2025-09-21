@@ -1,7 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState, type FocusEvent } from "react";
 import { Loader2, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 
-import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
 interface LabFilter {
@@ -17,8 +16,6 @@ interface LabSidebarProps {
   selectedLabs: LabFilter[];
   onToggleLab: (lab: LabFilter) => void;
   onClear: () => void;
-  cardSize: number;
-  onCardSizeChange: (size: number) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -29,11 +26,10 @@ export function LabSidebar({
   selectedLabs,
   onToggleLab,
   onClear,
-  cardSize,
-  onCardSizeChange,
   collapsed,
   onToggleCollapse,
 }: LabSidebarProps) {
+  const [isHovered, setIsHovered] = useState(false);
   const hasLabs = labs.length > 0;
   const selectionSummary = useMemo(() => {
     if (!selectedLabs.length) {
@@ -42,49 +38,78 @@ export function LabSidebar({
     return selectedLabs.map((lab) => lab.label).join(", ");
   }, [selectedLabs]);
 
+  const isExpanded = !collapsed || isHovered;
+
+  const handleMouseEnter = () => setIsHovered(true);
+  const handleMouseLeave = () => setIsHovered(false);
+  const handleFocus = () => setIsHovered(true);
+  const handleBlur = (event: FocusEvent<HTMLElement>) => {
+    const nextTarget = event.relatedTarget as Node | null;
+    if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+      setIsHovered(false);
+    }
+  };
+  const handleToggleClick = () => {
+    if (!collapsed) {
+      setIsHovered(false);
+    }
+    onToggleCollapse();
+  };
+
   return (
     <aside
-      className={`hidden lg:flex flex-col border-l border-border bg-background transition-all duration-300 ease-in-out ${
-        collapsed ? "w-14" : "w-80"
+      className={`hidden lg:flex flex-col border-l border-border transition-all duration-300 ease-in-out group ${
+        isExpanded
+          ? "w-80 bg-background shadow-lg"
+          : "w-16 bg-muted/70 hover:bg-muted/80"
       }`}
+      role="complementary"
+      aria-label="Labs sidebar"
+      aria-expanded={isExpanded}
+      tabIndex={0}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
     >
-      <div className="flex items-center justify-between px-2 py-3 border-b border-border">
+      <div
+        className={`border-b border-border bg-background/90 backdrop-blur ${
+          isExpanded
+            ? "flex items-center justify-between px-3 py-3"
+            : "flex flex-col items-center gap-3 py-4"
+        }`}
+      >
         <Button
           variant="ghost"
           size="icon"
-          onClick={onToggleCollapse}
-          className="h-7 w-7"
+          onClick={handleToggleClick}
+          aria-label={collapsed ? "Expand filters" : "Collapse filters"}
+          className={`h-8 w-8 transition-colors ${
+            isExpanded
+              ? "rounded-full text-muted-foreground hover:text-foreground"
+              : "rounded-full border border-border bg-background text-foreground shadow-sm hover:bg-muted"
+          }`}
         >
           {collapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </Button>
-        {!collapsed && (
+        {isExpanded ? (
           <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
             <Filter className="h-4 w-4" />
             <span>Labs</span>
           </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+            <Filter className="h-4 w-4" />
+            <span className="leading-none [writing-mode:vertical-rl] rotate-180">Labs</span>
+          </div>
         )}
       </div>
 
-      {!collapsed && (
+      {isExpanded && (
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Selection</p>
             <p className="text-sm font-medium text-foreground">{selectionSummary}</p>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">Card size</span>
-              <span className="text-xs text-muted-foreground">{cardSize.toFixed(1)}x</span>
-            </div>
-            <Slider
-              className="w-full"
-              min={0.8}
-              max={1.4}
-              step={0.1}
-              value={[cardSize]}
-              onValueChange={(value) => onCardSizeChange(value[0] ?? cardSize)}
-            />
           </div>
 
           <div className="space-y-3">

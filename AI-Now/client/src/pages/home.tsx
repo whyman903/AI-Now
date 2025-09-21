@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import MosaicFeed from "@/components/feed/MosaicFeed";
 import { TabNavigation } from "@/components/navigation/TabNavigation";
@@ -16,7 +16,6 @@ interface LabFilter {
 const API_BASE = import.meta.env.VITE_PYTHON_API_URL || "http://localhost:8000";
 
 export default function Home() {
-  const [cardSize, setCardSize] = useState(1);
   const [selectedLabs, setSelectedLabs] = useState<LabFilter[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
@@ -112,18 +111,6 @@ export default function Home() {
     return [...papers, ...allContent];
   }, [papersData, allContent]);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    const baseSize = 280;
-    const baseHeight = 180;
-    const newSize = Math.round(baseSize * cardSize);
-    const newHeight = Math.round(baseHeight * cardSize);
-
-    root.style.setProperty("--mosaic-card-size", `${newSize}px`);
-    root.style.setProperty("--mosaic-card-height", `${newHeight}px`);
-    root.style.setProperty("--mosaic-text-scale", cardSize.toString());
-  }, [cardSize]);
-
   const labs = labsQuery.data?.labs ?? [];
 
   return (
@@ -215,8 +202,6 @@ export default function Home() {
         selectedLabs={selectedLabs}
         onToggleLab={toggleLab}
         onClear={() => setSelectedLabs([])}
-        cardSize={cardSize}
-        onCardSizeChange={setCardSize}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />

@@ -20,11 +20,14 @@ interface MosaicContentItem extends ContentItem {
 
 interface MosaicFeedProps {
   items: MosaicContentItem[];
+  cardSize?: number;
 }
 
-const ROW_PX = 320;
+const BASE_ROW_PX = 320;
+const BASE_IMAGE_HEIGHT = 160;
+const GRID_GAP_PX = 16;
 
-export default function MosaicFeed({ items }: MosaicFeedProps) {
+export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
   if (!items || items.length === 0) {
     return <div className="text-center p-8">No items to display.</div>;
   }
@@ -44,8 +47,9 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
   );
 
   const sidebarRef = useRef<HTMLDivElement | null>(null);
-  const [sidebarHeight, setSidebarHeight] = useState<number>(0);
   const [sidebarRows, setSidebarRows] = useState<number>(0);
+  const rowPx = Math.max(200, Math.round(BASE_ROW_PX * cardSize));
+  const imageHeight = Math.max(120, Math.round(BASE_IMAGE_HEIGHT * cardSize));
   const [isLg, setIsLg] = useState<boolean>(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(min-width: 1024px)").matches
@@ -61,13 +65,12 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
   }, []);
 
   useEffect(() => {
-    const gap = 16;
+    const gap = GRID_GAP_PX;
     const calc = () => {
       const el = sidebarRef.current;
       if (!el) return;
       const h = el.getBoundingClientRect().height;
-      setSidebarHeight(h);
-      const rows = Math.max(1, Math.ceil((h + gap) / (ROW_PX + gap)));
+      const rows = Math.max(1, Math.ceil((h + gap) / (rowPx + gap)));
       setSidebarRows(rows);
     };
 
@@ -84,7 +87,7 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
       }
       ro?.disconnect();
     };
-  }, [papers.length]);
+  }, [papers.length, rowPx]);
 
   return (
     <div className="p-2 sm:p-3 lg:p-4">
@@ -92,15 +95,20 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
         {isLg && (
           <div
             className="col-span-1 sm:col-span-2 lg:col-span-3 overflow-hidden"
-            style={{ height: sidebarRows > 0 ? sidebarRows * (ROW_PX + 16) - 16 : "auto" }}
+            style={{
+              height:
+                sidebarRows > 0
+                  ? sidebarRows * (rowPx + GRID_GAP_PX) - GRID_GAP_PX
+                  : "auto",
+            }}
           >
             <div
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 h-full"
-              style={{ gridAutoRows: `${ROW_PX}px` }}
+              style={{ gridAutoRows: `${rowPx}px` }}
             >
               {regularContent.slice(0, sidebarRows * 3).map((item) => (
                 <div key={item.id} className="col-span-1 row-span-1 h-full">
-                  <ArticleCard item={item} />
+                  <ArticleCard item={item} imageHeight={imageHeight} />
                 </div>
               ))}
             </div>
@@ -161,11 +169,11 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
         <div className="col-span-1 sm:col-span-2 lg:col-span-4">
           <div
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-            style={{ gridAutoRows: `${ROW_PX}px` }}
+            style={{ gridAutoRows: `${rowPx}px` }}
           >
             {(isLg ? regularContent.slice(sidebarRows * 3) : regularContent).map((item) => (
               <div key={item.id} className="col-span-1 row-span-1 h-full">
-                <ArticleCard item={item} />
+                <ArticleCard item={item} imageHeight={imageHeight} />
               </div>
             ))}
           </div>
@@ -177,9 +185,10 @@ export default function MosaicFeed({ items }: MosaicFeedProps) {
 
 interface ArticleCardProps {
   item: MosaicContentItem;
+  imageHeight: number;
 }
 
-function ArticleCard({ item }: ArticleCardProps) {
+function ArticleCard({ item, imageHeight }: ArticleCardProps) {
   const hasThumbnail = !!item.thumbnailUrl;
   const [hideImage, setHideImage] = useState(!hasThumbnail);
 
@@ -227,7 +236,10 @@ function ArticleCard({ item }: ArticleCardProps) {
       onClick={handleCardClick}
     >
       {!hideImage && (
-        <div className="overflow-hidden rounded-xl w-full h-40 flex items-center justify-center">
+        <div
+          className="overflow-hidden rounded-xl w-full flex items-center justify-center"
+          style={{ height: `${imageHeight}px` }}
+        >
           <img
             src={item.thumbnailUrl ?? undefined}
             alt={item.title}
