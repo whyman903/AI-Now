@@ -6,7 +6,6 @@ LAB_FILTER_WHITELIST = {
     "Anthropic",
     "Google DeepMind",
     "OpenAI",
-    "OpenAI Research",
     "xAI",
     "Qwen",
     "Moonshot",

@@ -175,7 +175,7 @@ def scrape(headless: bool = True) -> List[Dict[str, Any]]:
             "thumbnail_url": item.get("thumbnail"),
             "type": item.get("type", "research_lab"),
             "meta_data": {
-                "source_name": "OpenAI Research",
+                "source_name": "OpenAI",
                 "category": "ai_ml",
                 "date_iso": item.get("date_iso"),
                 "date_display": item.get("date_display"),

@@ -107,11 +107,10 @@ export default function Home() {
       selectedTypeValues.length ? [...selectedTypeValues].sort().join("|") : "",
     ],
     queryFn: async ({ pageParam = 0 }) => {
-      const LIMIT = 24;
+      const LIMIT = 48;
       const params = new URLSearchParams({
         limit: LIMIT.toString(),
         offset: (pageParam * LIMIT).toString(),
-        exclude_type: "research_paper",
       });
       selectedAuthors.forEach((author) => params.append("source", author));
       selectedTypeValues.forEach((type) => params.append("types", type));

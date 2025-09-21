@@ -76,7 +76,8 @@ class ContentAggregator:
             {"name": "xAI", "category": "ai_ml", "scrape_func": xai_agg.scrape},
             {"name": "Qwen", "category": "ai_ml", "scrape_func": qwen_agg.scrape},
             {"name": "Moonshot", "category": "ai_ml", "scrape_func": moonshot_agg.scrape},
-            {"name": "OpenAI Research", "category": "ai_ml", "scrape_func": openai_agg.scrape},
+            {"name": "OpenAI", "category": "ai_ml", "scrape_func": openai_agg.scrape},
+            {"name": "Hugging Face Papers", "category": "ai_ml", "scrape_func": huggingface_agg.scrape_trending_papers},
         ]
 
 
