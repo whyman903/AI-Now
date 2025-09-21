@@ -10,12 +10,23 @@ interface LabFilter {
   source_type?: string | null;
 }
 
+interface ContentTypeFilter {
+  id: string;
+  label: string;
+  value: string;
+}
+
 interface LabSidebarProps {
   labs: LabFilter[];
   isLoading?: boolean;
   selectedLabs: LabFilter[];
   onToggleLab: (lab: LabFilter) => void;
   onClear: () => void;
+  contentTypes: ContentTypeFilter[];
+  contentTypesLoading?: boolean;
+  selectedContentTypes: ContentTypeFilter[];
+  onToggleContentType: (type: ContentTypeFilter) => void;
+  onClearContentTypes: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -26,17 +37,26 @@ export function LabSidebar({
   selectedLabs,
   onToggleLab,
   onClear,
+  contentTypes,
+  contentTypesLoading = false,
+  selectedContentTypes,
+  onToggleContentType,
+  onClearContentTypes,
   collapsed,
   onToggleCollapse,
 }: LabSidebarProps) {
   const [isHovered, setIsHovered] = useState(false);
   const hasLabs = labs.length > 0;
+  const showContentTypeSection = contentTypesLoading || contentTypes.length > 0;
   const selectionSummary = useMemo(() => {
-    if (!selectedLabs.length) {
-      return "All sources";
-    }
-    return selectedLabs.map((lab) => lab.label).join(", ");
-  }, [selectedLabs]);
+    const sourcesPart = selectedLabs.length
+      ? selectedLabs.map((lab) => lab.label).join(", ")
+      : "All labs";
+    const typesPart = selectedContentTypes.length
+      ? selectedContentTypes.map((type) => type.label).join(", ")
+      : "All content types";
+    return `${sourcesPart} • ${typesPart}`;
+  }, [selectedLabs, selectedContentTypes]);
 
   const isExpanded = !collapsed || isHovered;
 
@@ -113,7 +133,7 @@ export function LabSidebar({
           </div>
 
           <div className="space-y-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Sources</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Labs</p>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={onClear}
@@ -123,7 +143,7 @@ export function LabSidebar({
                     : "bg-primary text-primary-foreground border-primary shadow"
                 }`}
               >
-                All sources
+                All labs
               </button>
               {isLoading && (
                 <span className="inline-flex items-center gap-2 text-xs text-muted-foreground px-2 py-1">
@@ -151,6 +171,50 @@ export function LabSidebar({
               })}
             </div>
           </div>
+
+          {showContentTypeSection && (
+            <div className="space-y-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Content Types</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={onClearContentTypes}
+                  className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                    selectedContentTypes.length
+                      ? "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                      : "bg-primary text-primary-foreground border-primary shadow"
+                  }`}
+                >
+                  All types
+                </button>
+                {contentTypesLoading && (
+                  <span className="inline-flex items-center gap-2 text-xs text-muted-foreground px-2 py-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+                  </span>
+                )}
+                {!contentTypesLoading && !contentTypes.length && (
+                  <span className="text-xs text-muted-foreground">No content types available.</span>
+                )}
+                {contentTypes.map((type) => {
+                  const isActive = selectedContentTypes.some(
+                    (selected) => selected.id === type.id
+                  );
+                  return (
+                    <button
+                      key={type.id}
+                      onClick={() => onToggleContentType(type)}
+                      className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                        isActive
+                          ? "bg-primary text-primary-foreground border-primary shadow"
+                          : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {type.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </aside>

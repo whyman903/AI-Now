@@ -199,7 +199,7 @@ def extract_from_html(html: str):
             "date_display": date_display,
             "thumbnail": thumbnail,
             "url": url,
-            "author": 'XAI',
+            "author": 'xAI',
             "type": "research_lab"
         })
         seen_urls.add(url)

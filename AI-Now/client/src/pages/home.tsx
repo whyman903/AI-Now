@@ -13,10 +13,17 @@ interface LabFilter {
   source_type?: string | null;
 }
 
+interface ContentTypeFilter {
+  id: string;
+  label: string;
+  value: string;
+}
+
 const API_BASE = import.meta.env.VITE_PYTHON_API_URL || "http://localhost:8000";
 
 export default function Home() {
   const [selectedLabs, setSelectedLabs] = useState<LabFilter[]>([]);
+  const [selectedContentTypes, setSelectedContentTypes] = useState<ContentTypeFilter[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   const labsQuery = useQuery({
@@ -36,6 +43,37 @@ export default function Home() {
     [selectedLabs]
   );
 
+  const contentTypes = useMemo<ContentTypeFilter[]>(
+    () => [
+      { id: "youtube_video", label: "Video", value: "youtube_video" },
+      { id: "article", label: "Article", value: "article" },
+    ],
+    []
+  );
+
+  const selectedTypeValues = useMemo(
+    () => selectedContentTypes.map((type) => type.value),
+    [selectedContentTypes]
+  );
+
+  const hasActiveFilters = selectedLabs.length > 0 || selectedContentTypes.length > 0;
+
+  const activeFilterSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (selectedLabs.length) {
+      parts.push(`labs: ${selectedLabs.map((lab) => lab.label).join(", ")}`);
+    }
+    if (selectedContentTypes.length) {
+      parts.push(`types: ${selectedContentTypes.map((type) => type.label).join(", ")}`);
+    }
+    return parts.join(" • ");
+  }, [selectedLabs, selectedContentTypes]);
+
+  const clearAllFilters = () => {
+    setSelectedLabs([]);
+    setSelectedContentTypes([]);
+  };
+
   const toggleLab = (lab: LabFilter) => {
     setSelectedLabs((prev) => {
       const exists = prev.some((item) => item.id === lab.id);
@@ -43,6 +81,16 @@ export default function Home() {
         return prev.filter((item) => item.id !== lab.id);
       }
       return [...prev, lab];
+    });
+  };
+
+  const toggleContentType = (type: ContentTypeFilter) => {
+    setSelectedContentTypes((prev) => {
+      const exists = prev.some((item) => item.id === type.id);
+      if (exists) {
+        return prev.filter((item) => item.id !== type.id);
+      }
+      return [...prev, type];
     });
   };
 
@@ -56,6 +104,7 @@ export default function Home() {
     queryKey: [
       "content",
       selectedAuthors.length ? [...selectedAuthors].sort().join("|") : "",
+      selectedTypeValues.length ? [...selectedTypeValues].sort().join("|") : "",
     ],
     queryFn: async ({ pageParam = 0 }) => {
       const LIMIT = 24;
@@ -65,6 +114,7 @@ export default function Home() {
         exclude_type: "research_paper",
       });
       selectedAuthors.forEach((author) => params.append("source", author));
+      selectedTypeValues.forEach((type) => params.append("types", type));
 
       const response = await fetch(`${API_BASE}/api/v1/content?${params.toString()}`);
       if (!response.ok) {
@@ -133,16 +183,16 @@ export default function Home() {
         <div className="flex-1 flex flex-col">
           <TabNavigation>
             <div className="px-6 py-6 space-y-6">
-              {!!selectedLabs.length && (
+              {hasActiveFilters && (
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm">
                   <span>
-                    Showing highlights from {selectedLabs.map((lab) => lab.label).join(", ")}.
+                    Filters applied{activeFilterSummary ? ` — ${activeFilterSummary}` : ""}.
                   </span>
                   <button
-                    onClick={() => setSelectedLabs([])}
+                    onClick={clearAllFilters}
                     className="text-primary hover:underline"
                   >
-                    Clear filter
+                    Clear filters
                   </button>
                 </div>
               )}
@@ -202,6 +252,10 @@ export default function Home() {
         selectedLabs={selectedLabs}
         onToggleLab={toggleLab}
         onClear={() => setSelectedLabs([])}
+        contentTypes={contentTypes}
+        selectedContentTypes={selectedContentTypes}
+        onToggleContentType={toggleContentType}
+        onClearContentTypes={() => setSelectedContentTypes([])}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />

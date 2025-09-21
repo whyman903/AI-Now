@@ -2,6 +2,16 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Dict, Any
 from app.services.content_aggregator import get_content_aggregator
 
+LAB_FILTER_WHITELIST = {
+    "Anthropic",
+    "Google DeepMind",
+    "OpenAI",
+    "OpenAI Research",
+    "xAI",
+    "Qwen",
+    "Moonshot",
+}
+
 router = APIRouter()
 aggregator = get_content_aggregator()
 
@@ -41,20 +51,6 @@ def get_source_types():
         "types": list(source_types)
     }
 
-@router.get("/categories")
-def get_available_categories():
-    """Get available content categories"""
-    return {
-        "categories": [
-            {"id": "ai_ml", "name": "AI & Machine Learning"},
-            {"id": "programming", "name": "Programming"},
-            {"id": "startup", "name": "Startups"},
-            {"id": "tech_news", "name": "Tech News"},
-            {"id": "blockchain", "name": "Blockchain"},
-            {"id": "cybersecurity", "name": "Cybersecurity"}
-        ]
-    }
-
 @router.post("/sources/refresh/{source_name}")
 async def refresh_specific_source(source_name: str):
     """Manually refresh a specific source"""
@@ -88,6 +84,8 @@ def get_lab_filters():
     labs = []
     for source in combined_sources:
         label = source.get("name")
+        if not label or label not in LAB_FILTER_WHITELIST:
+            continue
         if not label or label in seen:
             continue
         seen.add(label)

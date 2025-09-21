@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import List, Optional
+from typing import List, Optional, Set
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, asc, desc
@@ -7,6 +7,22 @@ from app.db.base import get_db
 from app.db.models import ContentItem
 
 router = APIRouter()
+
+TYPE_ALIASES = {
+    "article": {"article", "research_lab", "blog", "news"},
+    "youtube_video": {"youtube_video"},
+}
+
+
+def _expand_types(selected: List[str]) -> Set[str]:
+    expanded: Set[str] = set()
+    for value in selected:
+        alias = TYPE_ALIASES.get(value)
+        if alias:
+            expanded.update(alias)
+        else:
+            expanded.add(value)
+    return expanded
 
 def _to_iso_utc(dt: datetime):
     """Serialize datetimes as ISO8601 with Z (UTC). Handles naive values as UTC."""
@@ -28,6 +44,7 @@ def get_content(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     content_type: Optional[str] = Query(None),
+    types: Optional[List[str]] = Query(None, description="Filter by one or more content types."),
     exclude_type: Optional[str] = Query(None),
     order: Optional[str] = Query(None, description="Ordering strategy: 'recent' or 'interleave' (default). For research_paper, rank ordering applies."),
     source: Optional[str] = Query(None, description="Filter by content author."),
@@ -44,9 +61,12 @@ def get_content(
 
     if source:
         base_query = base_query.filter(ContentItem.author == source)
-    
+
     # Filter by content type if specified
-    if content_type:
+    if types:
+        expanded_types = _expand_types(types)
+        base_query = base_query.filter(ContentItem.type.in_(expanded_types))
+    elif content_type:
         base_query = base_query.filter(ContentItem.type == content_type)
     # Exclude a content type if requested
     if exclude_type:
@@ -114,6 +134,15 @@ def get_content(
         "limit": limit,
         "offset": offset
     }
+
+
+@router.get("/types")
+def get_content_types(db: Session = Depends(get_db)):
+    """Return the distinct content types available in the database."""
+
+    rows = db.query(ContentItem.type).distinct().all()
+    values = sorted({row[0] for row in rows if row[0]})
+    return {"types": values}
 
 @router.get("/trending")
 def get_trending_content(

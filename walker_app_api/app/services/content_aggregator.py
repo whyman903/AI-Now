@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
@@ -36,6 +37,7 @@ class ContentAggregator:
         )
         self._thumb_cache: OrderedDict[str, Optional[str]] = OrderedDict()
         self._thumb_cache_size = 256
+        self._youtube_duration_cache: Dict[str, Optional[int]] = {}
 
         self._initialize_rss_sources()
         self._initialize_youtube_sources()
@@ -45,7 +47,7 @@ class ContentAggregator:
         self.rss_sources: List[Dict[str, Any]] = [
             # {"name": "OpenAI Blog", "url": "https://openai.com/blog/rss.xml", "category": "ai_ml", "type": "blog"},
            # {"name": "Google AI Blog", "url": "https://research.google/blog/rss", "category": "ai_ml", "type": "blog"},
-            {"name": "GoogleDeepMind", "url": "https://deepmind.google/blog/rss.xml", "category": "ai_ml", "type": "research_lab"},
+            {"name": "Google DeepMind", "url": "https://deepmind.google/blog/rss.xml", "category": "ai_ml", "type": "research_lab"},
             #{"name": "Microsoft Research", "url": "https://www.microsoft.com/en-us/research/feed/", "category": "ai_ml", "type": "blog"},
             # {"name": "NVIDIA Developer Blog", "url": "https://developer.nvidia.com/blog/feed/", "category": "ai_ml", "type": "blog"},
             #{"name": "Y Combinator Podcast", "url": "https://www.ycombinator.com/blog/feed/", "category": "startup", "type": "podcast"},
@@ -61,7 +63,10 @@ class ContentAggregator:
             # {"name": "Machine Learning Street Talk", "channel_id": "UCMLtBahI5DMrt0NPvDSoIRQ", "category": "ai_ml"},
             # {"name": "Lex Fridman", "channel_id": "UCSHZKyawb77ixDdsGog4iWA", "category": "ai_ml"},
             {"name": "OpenAI", "channel_id": "UCXZCJLdBC09xxGZ6gcdrc6A", "category": "ai_ml"},
+            {"name": "Anthropic", "channel_id": "UCrDwWp7EBBv4NwvScIpBDOA", "category": "ai_ml"},
+            {"name": "AI Engineer", "channel_id": "UCLKPca3kwwd-B59HNr-_lvA", "category": "ai_ml"},
             {"name": "Google DeepMind", "channel_id": "UCP7jMXSY2xbc3KCAE0MHQ-A", "category": "ai_ml"},
+            {"name": "Andrej Karpathy", "channel_id": "UCXUPKJO5MZQN11PqgIvyuvQ", "category": "ai_ml"},
             # {"name": "Y Combinator", "channel_id": "UCcefcZRL2oaA_uBNeo5UOWg", "category": "startup"},
         ]
 
@@ -72,7 +77,6 @@ class ContentAggregator:
             {"name": "Qwen", "category": "ai_ml", "scrape_func": qwen_agg.scrape},
             {"name": "Moonshot", "category": "ai_ml", "scrape_func": moonshot_agg.scrape},
             {"name": "OpenAI Research", "category": "ai_ml", "scrape_func": openai_agg.scrape},
-            {"name": "Hugging Face Papers", "category": "ai_ml", "scrape_func": huggingface_agg.scrape_trending_papers},
         ]
 
 
@@ -183,6 +187,24 @@ class ContentAggregator:
                     parts = entry.id.split(":")
                     if parts and parts[-1]:
                         video_id = parts[-1]
+                duration_seconds: Optional[int] = None
+                if video_id:
+                    duration_seconds = await self._fetch_youtube_duration(video_id)
+                if duration_seconds is None:
+                    logger.debug(
+                        "Skipping YouTube video %s from %s due to unknown duration",
+                        video_id,
+                        channel["name"],
+                    )
+                    continue
+                if duration_seconds < 180:
+                    logger.debug(
+                        "Skipping YouTube video %s from %s due to duration %s seconds",
+                        video_id,
+                        channel["name"],
+                        duration_seconds,
+                    )
+                    continue
                 thumb = None
                 thumbs = getattr(entry, "media_thumbnail", None) or getattr(entry, "media_thumbnails", None)
                 if thumbs and isinstance(thumbs, list) and thumbs[0].get("url"):
@@ -210,6 +232,7 @@ class ContentAggregator:
                             "category": channel["category"],
                             "video_id": video_id,
                             "channel_id": channel["channel_id"],
+                            "duration_seconds": duration_seconds,
                             "extraction_method": "youtube_rss",
                         },
                     }
@@ -233,6 +256,47 @@ class ContentAggregator:
             "items_with_thumbnails": items_with_thumbnails,
             "items_updated": items_updated,
         }
+
+    async def _fetch_youtube_duration(self, video_id: str) -> Optional[int]:
+        if not video_id:
+            return None
+        if video_id in self._youtube_duration_cache:
+            return self._youtube_duration_cache[video_id]
+
+        watch_url = f"https://www.youtube.com/watch?v={video_id}"
+        try:
+            response = await self._get(watch_url)
+        except Exception as exc:
+            logger.debug("Failed to fetch YouTube duration for %s: %s", video_id, exc)
+            self._youtube_duration_cache[video_id] = None
+            return None
+
+        if response.status_code != 200:
+            logger.debug(
+                "YouTube watch page request failed for %s with HTTP %s",
+                video_id,
+                response.status_code,
+            )
+            self._youtube_duration_cache[video_id] = None
+            return None
+
+        text = response.text
+        match = re.search(r'"lengthSeconds":"(\d+)"', text)
+        duration: Optional[int]
+        if match:
+            duration = int(match.group(1))
+        else:
+            approx = re.search(r'"approxDurationMs":"(\d+)"', text)
+            if approx:
+                duration = int(approx.group(1)) // 1000
+            else:
+                duration = None
+
+        if duration is not None and duration <= 0:
+            duration = None
+
+        self._youtube_duration_cache[video_id] = duration
+        return duration
 
     async def _aggregate_web_scrapers(self) -> Dict[str, Any]:
         logger.info("Aggregating Selenium/BeautifulSoup sources...")
