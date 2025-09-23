@@ -8,6 +8,7 @@ import {
   FlaskConical,
   TrendingUp,
   ChevronRight,
+  Github,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { ContentItem } from "@shared/schema";
@@ -139,10 +140,25 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
                         {idx + 1}
                       </span>
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="font-serif text-sm font-semibold leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
-                        {paper.title}
-                      </h3>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-serif text-sm font-semibold leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+                          {paper.title}
+                        </h3>
+                        {paper.metadata?.github_url && (
+                          <button
+                            type="button"
+                            aria-label="Open associated GitHub repository"
+                            className="shrink-0 inline-flex items-center justify-center rounded-md border border-transparent bg-blue-700/15 text-blue-700 hover:bg-blue-700/25 transition-colors p-1"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              window.open(paper.metadata?.github_url, "_blank", "noopener,noreferrer");
+                            }}
+                          >
+                            <Github className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                       {paper.author && (
                         <p className="text-xs text-muted-foreground mt-1 truncate">By {paper.author}</p>
                       )}
@@ -191,6 +207,7 @@ interface ArticleCardProps {
 function ArticleCard({ item, imageHeight }: ArticleCardProps) {
   const hasThumbnail = !!item.thumbnailUrl;
   const [hideImage, setHideImage] = useState(!hasThumbnail);
+  const githubUrl = item.metadata?.github_url as string | undefined;
 
   const getCardStyleClasses = () => {
     switch (item.type) {
@@ -259,12 +276,27 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
               {getIcon()}
               <span className="ml-2 capitalize">{item.type.replace("_", " ")}</span>
             </div>
-            {item.metadata?.source_name === "Hugging Face Papers" && (
-              <Badge variant="outline" className="text-xs px-2 py-0 h-5 flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" />
-                Trending
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {githubUrl && (
+                <button
+                  type="button"
+                  aria-label="Open associated GitHub repository"
+                  className="inline-flex items-center justify-center rounded-md border border-transparent bg-muted text-foreground hover:bg-muted/80 transition-colors p-1"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    window.open(githubUrl, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  <Github className="h-4 w-4" />
+                </button>
+              )}
+              {item.metadata?.source_name === "Hugging Face Papers" && (
+                <Badge variant="outline" className="text-xs px-2 py-0 h-5 flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3" />
+                  Trending
+                </Badge>
+              )}
+            </div>
           </div>
 
           <h3

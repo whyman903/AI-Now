@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import re
+import zlib
 from typing import List, Optional, Dict, Any
 from urllib.parse import urljoin
 
@@ -13,6 +14,10 @@ BASE = "https://huggingface.co"
 TRENDING = f"{BASE}/papers/trending"
 
 ARXIV_PDF_RE = re.compile(r"https?://arxiv\.org/(?:pdf|abs)/(\d{4}\.\d{4,}(?:v\d+)?)")
+GITHUB_URL_RE = re.compile(
+    rb"https?://(?:www\.)?github\.com/[\w\-./%?#=]+",
+    re.IGNORECASE,
+)
 
 HEADERS = {
     "User-Agent": (
@@ -86,6 +91,106 @@ def _resolve_pdf_for_paper_sync(paper_url: str) -> Optional[str]:
     return pdf_url
 
 
+def _clean_extracted_url(url: str) -> str:
+    """Trim common trailing punctuation from URLs extracted out of text blobs."""
+    return url.rstrip(")]>.,;'\"")
+
+
+def _extract_github_from_bytes(blob: bytes) -> Optional[str]:
+    match = GITHUB_URL_RE.search(blob)
+    if not match:
+        return None
+    url_bytes = match.group(0)
+    try:
+        url = url_bytes.decode("utf-8", errors="ignore")
+    except UnicodeDecodeError:
+        return None
+    return _clean_extracted_url(url)
+
+
+def _iter_pdf_streams(pdf_bytes: bytes, max_stream_bytes: int = 1_500_000):
+    """Yield raw stream sections from a PDF binary payload."""
+    stream_marker = b"stream"
+    end_marker = b"endstream"
+    start_idx = 0
+    while True:
+        stream_pos = pdf_bytes.find(stream_marker, start_idx)
+        if stream_pos == -1:
+            break
+        data_start = stream_pos + len(stream_marker)
+        # Skip leading newlines after the stream marker
+        while data_start < len(pdf_bytes) and pdf_bytes[data_start:data_start + 1] in (b"\r", b"\n"):
+            data_start += 1
+        end_pos = pdf_bytes.find(end_marker, data_start)
+        if end_pos == -1:
+            break
+        stream = pdf_bytes[data_start:end_pos]
+        if not stream:
+            start_idx = end_pos + len(end_marker)
+            continue
+        if max_stream_bytes and len(stream) > max_stream_bytes:
+            start_idx = end_pos + len(end_marker)
+            continue
+        yield stream
+        start_idx = end_pos + len(end_marker)
+
+
+def _safe_decompress(stream: bytes, max_output: int = 2_000_000) -> Optional[bytes]:
+    """Attempt to inflate a raw PDF stream, capping the amount of output we keep."""
+    if not stream or len(stream) > max_output * 4:
+        return None
+
+    for wbits in (zlib.MAX_WBITS, -15):
+        try:
+            decompressor = zlib.decompressobj(wbits)
+            remaining = max_output
+            chunks = []
+
+            data = decompressor.decompress(stream, remaining)
+            if data:
+                chunks.append(data)
+                remaining -= len(data)
+
+            while remaining > 0 and decompressor.unconsumed_tail:
+                data = decompressor.decompress(decompressor.unconsumed_tail, remaining)
+                if not data:
+                    break
+                chunks.append(data)
+                remaining -= len(data)
+
+            if chunks:
+                return b"".join(chunks)
+        except zlib.error:
+            continue
+    return None
+
+
+def _extract_github_url_from_pdf(pdf_url: str) -> Optional[str]:
+    try:
+        response = httpx.get(pdf_url, headers=HEADERS, timeout=30.0, follow_redirects=True)
+    except httpx.HTTPError:
+        return None
+
+    if response.status_code != 200 or not response.content:
+        return None
+
+    raw_bytes = response.content
+
+    direct_match = _extract_github_from_bytes(raw_bytes)
+    if direct_match:
+        return direct_match
+
+    for stream in _iter_pdf_streams(raw_bytes):
+        inflated = _safe_decompress(stream)
+        if not inflated:
+            continue
+        match = _extract_github_from_bytes(inflated)
+        if match:
+            return match
+
+    return None
+
+
 def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
     """Scrape trending Hugging Face papers and return normalized content items."""
     html = httpx.get(TRENDING, headers=HEADERS, timeout=30.0).text
@@ -113,6 +218,7 @@ def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
         paper_page_url = urljoin(BASE, href)
 
         pdf_url = _resolve_pdf_for_paper_sync(paper_page_url)
+        github_url = _extract_github_url_from_pdf(pdf_url) if pdf_url else None
         final_url = pdf_url or paper_page_url
 
         thumb_el = article.select_one("img")
@@ -172,6 +278,10 @@ def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
             "extraction_method": "huggingface_trending",
             "original_url": paper_page_url,
         }
+        if pdf_url:
+            meta["pdf_url"] = pdf_url
+        if github_url:
+            meta["github_url"] = github_url
         if description:
             meta["description"] = description
         if authors_text:

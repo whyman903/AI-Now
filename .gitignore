@@ -230,3 +230,7 @@ celerybeat.pid
 
 # pytype static type analyzer
 .pytype/
+
+# Local agent documentation
+/agents.md
+walker_app_api/app/services/aggregation_sources/agents.md
