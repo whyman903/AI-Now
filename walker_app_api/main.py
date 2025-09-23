@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Content Aggregation API for TrendCurate",
+    description="Content Aggregation API for AI-Now",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
 )
@@ -71,7 +71,7 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.get("/")
 def read_root():
     return {
-        "message": "TrendCurate Content Aggregation API",
+        "message": "AI-Now Content Aggregation API",
         "status": "running",
         "version": settings.VERSION
     }

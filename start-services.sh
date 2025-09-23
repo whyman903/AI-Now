@@ -191,7 +191,7 @@ main() {
     wait_for_services
     
     echo ""
-    echo "TrendCurate is now running!"
+    echo "AI-Now is now running!"
     echo ""
     echo "Service URLs:"
     echo "   Frontend:       http://localhost:5173"

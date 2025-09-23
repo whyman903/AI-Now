@@ -30,7 +30,7 @@ async def main():
         print(f"WARN: create_tables/ensure schema failed or skipped: {e}")
 
     # Prepare shared HTTP client and inject
-    client = httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={'User-Agent': 'TrendCurate/1.0'})
+    client = httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={'User-Agent': 'AI-Now/1.0'})
     aggregator = get_content_aggregator()
     aggregator.set_http_client(client)
 

@@ -4,7 +4,8 @@ import MosaicFeed from "@/components/feed/MosaicFeed";
 import { TabNavigation } from "@/components/navigation/TabNavigation";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { LabSidebar } from "@/components/layout/LabSidebar";
-import { Plus, Podcast } from "lucide-react";
+import { AppLogo } from "@/components/branding/AppLogo";
+import { Plus } from "lucide-react";
 
 interface LabFilter {
   id: string;
@@ -156,8 +157,24 @@ export default function Home() {
   }, [data]);
 
   const combined = useMemo(() => {
-    const papers = (papersData as any)?.items || [];
-    return [...papers, ...allContent];
+    const papers = ((papersData as any)?.items || []) as any[];
+    const merged: any[] = [];
+    const seen = new Set<string>();
+
+    const pickKey = (item: any) =>
+      item?.id || item?.metadata?.original_url || item?.url || null;
+
+    for (const item of [...papers, ...allContent]) {
+      if (!item) continue;
+      const key = pickKey(item);
+      if (key) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      merged.push(item);
+    }
+
+    return merged;
   }, [papersData, allContent]);
 
   const labs = labsQuery.data?.labs ?? [];
@@ -167,14 +184,12 @@ export default function Home() {
       <div className="flex-1 flex flex-col">
         <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
           <div className="px-6 py-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Podcast className="w-4 h-4 text-white" />
-                </div>
-                <h1 className="text-xl font-bold text-foreground">TrendCurate</h1>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+              <span className="block" aria-hidden="true" />
+              <AppLogo />
+              <div className="justify-self-end">
+                <ThemeToggle />
               </div>
-              <ThemeToggle />
             </div>
           </div>
         </div>

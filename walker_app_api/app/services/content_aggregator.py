@@ -5,12 +5,13 @@ import logging
 import re
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import feedparser
 import httpx
 from dateutil import parser as dateparser
+from sqlalchemy import or_
 
 from app.db.base import SessionLocal
 from app.db.models import ContentItem, FeedState
@@ -434,6 +435,7 @@ class ContentAggregator:
             return {"items_added": 0, "items_with_thumbnails": 0, "items_updated": 0}
 
         normalized: List[Dict[str, Any]] = []
+        original_urls: Set[str] = set()
         for item in items:
             url = item.get("url")
             title = item.get("title")
@@ -443,6 +445,12 @@ class ContentAggregator:
             published_at = self._resolve_published_at(item)
             if not published_at:
                 published_at = self._utcnow_naive()
+            meta_data = dict(item.get("meta_data", {}) or {})
+            original_url = meta_data.get("original_url")
+            if original_url:
+                canonical_original = self.canonicalize(original_url)
+                meta_data["original_url"] = canonical_original
+                original_urls.add(canonical_original)
             normalized.append(
                 {
                     "type": item.get("type", "article"),
@@ -451,7 +459,7 @@ class ContentAggregator:
                     "author": item.get("author"),
                     "published_at": published_at,
                     "thumbnail_url": item.get("thumbnail_url"),
-                    "meta_data": item.get("meta_data", {}),
+                    "meta_data": meta_data,
                 }
             )
 
@@ -461,15 +469,51 @@ class ContentAggregator:
         urls = [item["url"] for item in normalized]
         db = SessionLocal()
         try:
-            existing_items = {
-                row.url: row for row in db.query(ContentItem).filter(ContentItem.url.in_(urls)).all()
-            }
+            filters = []
+            if urls:
+                filters.append(ContentItem.url.in_(urls))
+            if original_urls:
+                filters.append(
+                    ContentItem.meta_data["original_url"].as_string().in_(list(original_urls))
+                )
+            query = db.query(ContentItem)
+            if filters:
+                if len(filters) == 1:
+                    query = query.filter(filters[0])
+                else:
+                    query = query.filter(or_(*filters))
+            existing_rows = query.all()
+
+            existing_by_url: Dict[str, ContentItem] = {}
+            existing_by_original: Dict[str, ContentItem] = {}
+            survivors_by_original: Dict[str, ContentItem] = {}
+            for row in existing_rows:
+                canonical_url = self.canonicalize(row.url) if row.url else None
+                if canonical_url and canonical_url not in existing_by_url:
+                    existing_by_url[canonical_url] = row
+                meta = row.meta_data or {}
+                orig = meta.get("original_url")
+                if isinstance(orig, str) and orig:
+                    canonical_orig = self.canonicalize(orig)
+                    existing_by_original.setdefault(canonical_orig, row)
 
             items_added = items_updated = items_with_thumbnails = 0
             for payload in normalized:
-                existing = existing_items.get(payload["url"])
+                meta = payload.get("meta_data") or {}
+                original_key = meta.get("original_url")
+                existing = existing_by_url.get(payload["url"])
+                if not existing and original_key:
+                    existing = existing_by_original.get(original_key)
                 if existing:
                     changed = False
+                    if existing.url != payload["url"]:
+                        old_url = existing.url
+                        canonical_old_url = self.canonicalize(old_url) if old_url else None
+                        if canonical_old_url and canonical_old_url in existing_by_url and existing_by_url[canonical_old_url] is existing:
+                            del existing_by_url[canonical_old_url]
+                        existing.url = payload["url"]
+                        existing_by_url[payload["url"]] = existing
+                        changed = True
                     new_published = payload.get("published_at")
                     if new_published and (
                         not getattr(existing, "published_at", None)
@@ -483,13 +527,22 @@ class ContentAggregator:
                     if payload.get("thumbnail_url") and not existing.thumbnail_url:
                         existing.thumbnail_url = payload["thumbnail_url"]
                         changed = True
-                    if payload.get("meta_data"):
+                    if meta:
                         merged_meta = dict(existing.meta_data or {})
-                        merged_meta.update(payload["meta_data"])
+                        merged_meta.update(meta)
+                        canonical_original = merged_meta.get("original_url")
+                        if isinstance(canonical_original, str) and canonical_original:
+                            canonical_original = self.canonicalize(canonical_original)
+                            merged_meta["original_url"] = canonical_original
+                            existing_by_original[canonical_original] = existing
+                            survivors_by_original[canonical_original] = existing
+                            original_key = canonical_original
                         existing.meta_data = merged_meta
                         changed = True
                     if changed:
                         items_updated += 1
+                    if original_key:
+                        survivors_by_original.setdefault(original_key, existing)
                     continue
 
                 if not payload.get("thumbnail_url"):
@@ -498,8 +551,29 @@ class ContentAggregator:
                         payload["thumbnail_url"] = thumb
                 if payload.get("thumbnail_url"):
                     items_with_thumbnails += 1
-                db.add(ContentItem(**payload))
+                new_item = ContentItem(**payload)
+                db.add(new_item)
+                existing_by_url[payload["url"]] = new_item
+                original_key = meta.get("original_url")
+                if original_key:
+                    existing_by_original[original_key] = new_item
+                    survivors_by_original[original_key] = new_item
                 items_added += 1
+
+            if survivors_by_original:
+                processed_keys = set(survivors_by_original.keys())
+                for row in existing_rows:
+                    meta = row.meta_data or {}
+                    orig = meta.get("original_url")
+                    if not isinstance(orig, str) or not orig:
+                        continue
+                    canonical_orig = self.canonicalize(orig)
+                    if canonical_orig not in processed_keys:
+                        continue
+                    survivor = survivors_by_original.get(canonical_orig)
+                    if survivor is None or survivor is row:
+                        continue
+                    db.delete(row)
 
             db.commit()
             return {

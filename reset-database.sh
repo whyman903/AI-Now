@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Resetting database schema for TrendCurate..."
+echo "Resetting database schema for AI-Now..."
 
 # Stop any running services
 echo "Stopping services..."
@@ -12,7 +12,7 @@ sleep 2
 reset_database() {
     echo "Resetting database schema..."
     
-    cd TrendCurate
+    cd AI-Now
     
     # Create a temporary drizzle config that forces schema reset
     cat > drizzle.config.temp.ts << 'EOF'
@@ -43,9 +43,9 @@ EOF
 }
 
 # Check if .env exists
-if [ ! -f "TrendCurate/.env" ]; then
-    echo "ERROR: No .env file found in TrendCurate/"
-    echo "Please create TrendCurate/.env with DATABASE_URL"
+if [ ! -f "AI-Now/.env" ]; then
+    echo "ERROR: No .env file found in AI-Now/"
+    echo "Please create AI-Now/.env with DATABASE_URL"
     exit 1
 fi
 
