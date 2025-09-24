@@ -15,7 +15,7 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+from ._webdriver import get_chromedriver_path
 
 BASE = "https://x.ai"
 START_URL = "https://x.ai/news"
@@ -44,7 +44,7 @@ def build_driver(headless: bool = True) -> webdriver.Chrome:
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/126.0.0.0 Safari/537.36"
     )
-    service = Service(ChromeDriverManager().install())
+    service = Service(get_chromedriver_path())
     driver = webdriver.Chrome(service=service, options=opts)
 
     driver.execute_cdp_cmd(

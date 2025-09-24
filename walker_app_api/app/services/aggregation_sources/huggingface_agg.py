@@ -294,7 +294,7 @@ def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
                 "type": "research_paper",
                 "title": title,
                 "url": final_url,
-                "author": "Hugging Face Papers",
+                "author": authors_text or None,
                 "published_at": published_at,
                 "thumbnail_url": thumbnail,
                 "meta_data": meta,
