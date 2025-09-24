@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import re
 from typing import List, Dict, Any
 from urllib.parse import urljoin, urlparse
 from datetime import datetime, timezone

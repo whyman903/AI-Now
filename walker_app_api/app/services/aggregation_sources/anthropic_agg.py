@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import re
 import time
 from typing import List, Dict, Any
 from urllib.parse import urljoin
@@ -19,9 +18,6 @@ from ._webdriver import get_chromedriver_path
 
 BASE = "https://www.anthropic.com"
 START_URL = "https://www.anthropic.com/news"
-
-MONTH_RE = re.compile(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", re.I)
-YEAR_RE = re.compile(r"\b20\d{2}\b")
 
 def build_driver(headless: bool = True) -> webdriver.Chrome:
     opts = Options()
