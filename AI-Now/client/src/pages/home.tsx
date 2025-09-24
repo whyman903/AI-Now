@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import MosaicFeed from "@/components/feed/MosaicFeed";
-import { TabNavigation } from "@/components/navigation/TabNavigation";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { LabSidebar } from "@/components/layout/LabSidebar";
 import { AppLogo } from "@/components/branding/AppLogo";
@@ -195,68 +194,66 @@ export default function Home() {
         </div>
 
         <div className="flex-1 flex flex-col">
-          <TabNavigation>
-            <div className="px-6 py-6 space-y-6">
-              {hasActiveFilters && (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm">
-                  <span>
-                    Filters applied{activeFilterSummary ? ` — ${activeFilterSummary}` : ""}.
-                  </span>
-                  <button
-                    onClick={clearAllFilters}
-                    className="text-primary hover:underline"
+          <div className="px-6 py-6 space-y-6">
+            {hasActiveFilters && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm">
+                <span>
+                  Filters applied{activeFilterSummary ? ` — ${activeFilterSummary}` : ""}.
+                </span>
+                <button
+                  onClick={clearAllFilters}
+                  className="text-primary hover:underline"
+                >
+                  Clear filters
+                </button>
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="mosaic-grid">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`mosaic-item ${
+                      i % 4 === 0 ? "size-large" : i % 3 === 0 ? "size-wide" : "size-medium"
+                    } bg-muted animate-pulse`}
                   >
-                    Clear filters
-                  </button>
-                </div>
-              )}
-
-              {isLoading && (
-                <div className="mosaic-grid">
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`mosaic-item ${
-                        i % 4 === 0 ? "size-large" : i % 3 === 0 ? "size-wide" : "size-medium"
-                      } bg-muted animate-pulse`}
-                    >
-                      <div className="h-full w-full bg-gradient-to-br from-muted to-muted/60 rounded-lg" />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {!isLoading && combined.length === 0 && (
-                <div className="text-center py-20">
-                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Plus className="h-8 w-8 text-muted-foreground" />
+                    <div className="h-full w-full bg-gradient-to-br from-muted to-muted/60 rounded-lg" />
                   </div>
-                  <h3 className="text-lg font-medium text-foreground mb-2">No content yet</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Content is being aggregated. Check back in a few minutes.
-                  </p>
-                </div>
-              )}
+                ))}
+              </div>
+            )}
 
-              {!isLoading && combined.length > 0 && <MosaicFeed items={combined} />}
-
-              {!isLoading && allContent.length > 0 && (
-                <div className="flex items-center justify-center pt-4">
-                  {hasNextPage ? (
-                    <button
-                      onClick={() => fetchNextPage()}
-                      disabled={isFetchingNextPage}
-                      className="px-4 py-2 text-sm rounded-md border hover:bg-muted disabled:opacity-60"
-                    >
-                      {isFetchingNextPage ? "Loading…" : "Load more"}
-                    </button>
-                  ) : (
-                    <div className="text-xs text-muted-foreground">No more results</div>
-                  )}
+            {!isLoading && combined.length === 0 && (
+              <div className="text-center py-20">
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Plus className="h-8 w-8 text-muted-foreground" />
                 </div>
-              )}
-            </div>
-          </TabNavigation>
+                <h3 className="text-lg font-medium text-foreground mb-2">No content yet</h3>
+                <p className="text-muted-foreground mb-4">
+                  Content is being aggregated. Check back in a few minutes.
+                </p>
+              </div>
+            )}
+
+            {!isLoading && combined.length > 0 && <MosaicFeed items={combined} />}
+
+            {!isLoading && allContent.length > 0 && (
+              <div className="flex items-center justify-center pt-4">
+                {hasNextPage ? (
+                  <button
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    className="px-4 py-2 text-sm rounded-md border hover:bg-muted disabled:opacity-60"
+                  >
+                    {isFetchingNextPage ? "Loading…" : "Load more"}
+                  </button>
+                ) : (
+                  <div className="text-xs text-muted-foreground">No more results</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
