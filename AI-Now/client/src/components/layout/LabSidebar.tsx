@@ -78,7 +78,7 @@ export function LabSidebar({
 
   return (
     <aside
-      className={`hidden lg:flex flex-col border-l border-border transition-all duration-300 ease-in-out group ${
+      className={`hidden lg:flex flex-col border-l border-border transition-all duration-300 ease-in-out group flex-shrink-0 lg:sticky lg:top-0 lg:h-screen ${
         isExpanded
           ? "w-80 bg-background shadow-lg"
           : "w-16 bg-muted/70 hover:bg-muted/80"

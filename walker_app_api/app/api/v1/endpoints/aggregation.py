@@ -100,7 +100,6 @@ async def get_aggregation_status(db: Session = Depends(get_db)) -> Dict[str, Any
             "data": {
                 **stats,
                 'sources': sources_summary,
-                'firecrawlHealthy': None,
             },
         }
         

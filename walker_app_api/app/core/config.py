@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     
     # API Keys - only the ones we actually use
-    FIRECRAWL_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     
     # Redis for caching and queues
