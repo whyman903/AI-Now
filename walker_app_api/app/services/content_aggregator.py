@@ -17,6 +17,7 @@ from app.db.base import SessionLocal
 from app.db.models import ContentItem, FeedState
 from app.services.aggregation_sources import (
     anthropic_agg,
+    deepseek_agg,
     huggingface_agg,
     moonshot_agg,
     openai_agg,
@@ -74,6 +75,7 @@ class ContentAggregator:
     def _initialize_web_scraper_sources(self) -> None:
         self.web_scraper_sources: List[Dict[str, Any]] = [
             {"name": "Anthropic", "category": "ai_ml", "scrape_func": anthropic_agg.scrape},
+            {"name": "DeepSeek", "category": "ai_ml", "scrape_func": deepseek_agg.scrape},
             {"name": "xAI", "category": "ai_ml", "scrape_func": xai_agg.scrape},
             {"name": "Qwen", "category": "ai_ml", "scrape_func": qwen_agg.scrape},
             {"name": "Moonshot", "category": "ai_ml", "scrape_func": moonshot_agg.scrape},

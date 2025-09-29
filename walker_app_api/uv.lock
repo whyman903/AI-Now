@@ -505,18 +505,6 @@ wheels = [
 ]
 
 [[package]]
-name = "firecrawl-py"
-version = "0.0.16"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e8/64/d480cdb6ab75ea205d187fcbbd726b0c8a60f00343beb49dfbd1be4f40c8/firecrawl_py-0.0.16.tar.gz", hash = "sha256:6c662fa0a549bc7f5c0acb704baba6731869ca0451094034264dfc1b4eb086e4", size = 11056, upload-time = "2024-06-14T14:40:30.291Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/55/6e74b49b32ec95f11adb12961f1cb25e14199daa91742c781ee7665bd045/firecrawl_py-0.0.16-py3-none-any.whl", hash = "sha256:9024f483b501852a6b9c4e6cdfc9e8dde452d922afac357080bb278a0c9c2a26", size = 9464, upload-time = "2024-06-14T14:40:28.307Z" },
-]
-
-[[package]]
 name = "fsspec"
 version = "2025.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2588,7 +2576,6 @@ dependencies = [
     { name = "cloudscraper" },
     { name = "fastapi" },
     { name = "feedparser" },
-    { name = "firecrawl-py" },
     { name = "httpx" },
     { name = "lxml" },
     { name = "nltk" },
@@ -2620,7 +2607,6 @@ requires-dist = [
     { name = "cloudscraper", specifier = "==1.2.71" },
     { name = "fastapi", specifier = "==0.104.1" },
     { name = "feedparser", specifier = "==6.0.10" },
-    { name = "firecrawl-py", specifier = "==0.0.16" },
     { name = "httpx", specifier = "==0.25.2" },
     { name = "lxml", specifier = "==4.9.3" },
     { name = "nltk", specifier = ">=3.8" },
