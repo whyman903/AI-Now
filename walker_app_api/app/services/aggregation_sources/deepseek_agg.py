@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
 from xml.etree import ElementTree as ET
 
+from ._lab_scraper_utils import ensure_naive_utc, make_lab_item, normalize_whitespace
+
 BASE_URL = "https://www.deepseek.com"
 PAGE_URL = "https://www.deepseek.com/en"
 THUMBNAIL_URL = "/images/deepseek-logo.png"
@@ -55,13 +57,6 @@ def _fetch_page(url: str = PAGE_URL) -> str:
         resp.raise_for_status()
         return resp.text
 
-
-def _normalize(text: str | None) -> str | None:
-    if not text:
-        return None
-    return " ".join(text.split())
-
-
 def _absolutize(url: str) -> str:
     if url.startswith("//"):
         return "https:" + url
@@ -88,7 +83,7 @@ def _extract_research_links(html: str) -> List[Dict[str, str]]:
         if url in seen:
             continue
 
-        title = _normalize(anchor.get_text(strip=True))
+        title = normalize_whitespace(anchor.get_text(strip=True))
         if not title:
             continue
 
@@ -96,12 +91,6 @@ def _extract_research_links(html: str) -> List[Dict[str, str]]:
         seen.add(url)
 
     return results
-
-
-def _to_utc_naive(dt: datetime) -> datetime:
-    if dt.tzinfo:
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-    return dt
 
 
 def _format_relative(dt: datetime) -> str:
@@ -174,7 +163,7 @@ def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) ->
             if updated_text:
                 parsed = dateparser.parse(updated_text)
                 if parsed:
-                    published_at = _to_utc_naive(parsed)
+                    published_at = ensure_naive_utc(parsed)
                     meta["date_iso"] = published_at.isoformat()
                     meta["date_display"] = _format_relative(published_at)
             link = entry.find(f"{ATOM_NS}link[@rel='alternate']")
@@ -196,7 +185,7 @@ def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) ->
                 if updated_text:
                     parsed = dateparser.parse(updated_text)
                     if parsed:
-                        published_at = _to_utc_naive(parsed)
+                        published_at = ensure_naive_utc(parsed)
                         meta.setdefault("date_iso", published_at.isoformat())
                         meta.setdefault("date_display", _format_relative(published_at))
                 link = entry.find(f"{ATOM_NS}link[@rel='alternate']")
@@ -218,26 +207,30 @@ def scrape() -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     with httpx.Client(headers=GITHUB_PAGE_HEADERS, timeout=10.0, follow_redirects=True) as gh_client:
         for item in items:
-            published_at, extra_meta = _fetch_readme_metadata(item["url"], client=gh_client)
+            published_at, repo_meta = _fetch_readme_metadata(item["url"], client=gh_client)
 
-            meta: Dict[str, Any] = {
-                "source_name": "DeepSeek",
-                "category": "ai_ml",
-                "extraction_method": "httpx",
-                "section": "Research",
-            }
-            meta.update(extra_meta)
+            meta_extra: Dict[str, Any] = {"section": "Research"}
+            repo_meta = repo_meta or {}
+            date_iso = repo_meta.get("date_iso")
+            date_display = repo_meta.get("date_display")
+            meta_extra.update(
+                {k: v for k, v in repo_meta.items() if k not in {"date_iso", "date_display"}}
+            )
 
             normalized.append(
-                {
-                    "title": item["title"],
-                    "url": item["url"],
-                    "author": "DeepSeek",
-                    "published_at": published_at,
-                    "thumbnail_url": THUMBNAIL_URL,
-                    "type": "research_lab",
-                    "meta_data": meta,
-                }
+                make_lab_item(
+                    title=item["title"],
+                    url=item["url"],
+                    author="DeepSeek",
+                    published_at=published_at,
+                    thumbnail_url=THUMBNAIL_URL,
+                    item_type="research_lab",
+                    source_name="DeepSeek",
+                    extraction_method="httpx",
+                    date_iso=date_iso,
+                    date_display=date_display,
+                    extra_meta=meta_extra,
+                )
             )
 
     return normalized

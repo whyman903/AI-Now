@@ -1,48 +1,31 @@
 #!/usr/bin/env python3
 import time
-from typing import List, Dict, Any
+from datetime import datetime
+from typing import Any, Dict, List
 from urllib.parse import urljoin
-from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
 
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from ._webdriver import get_chromedriver_path
+
+from ._lab_scraper_utils import (
+    autoscroll_page,
+    create_chrome_driver,
+    make_lab_item,
+    normalize_whitespace,
+    parse_datetime,
+)
 
 BASE = "https://www.anthropic.com"
 START_URL = "https://www.anthropic.com/news"
 
 def build_driver(headless: bool = True) -> webdriver.Chrome:
-    opts = Options()
-    if headless:
-        opts.add_argument("--headless=new")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--window-size=1400,1400")
-    opts.add_argument("--disable-blink-features=AutomationControlled")
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
-    opts.add_argument("accept-language=en-US,en;q=0.9")
-    opts.add_argument(
-        "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/126.0.0.0 Safari/537.36"
-    )
-    service = Service(get_chromedriver_path())
-    driver = webdriver.Chrome(service=service, options=opts)
-    driver.execute_cdp_cmd(
-        "Page.addScriptToEvaluateOnNewDocument",
-        {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"}
-    )
-    return driver
+    return create_chrome_driver(headless=headless, window_size="1400,1400")
 
 def wait_for_cards(driver, timeout=25):
     sel = ("a.PostCard_post-card__z_Sqq,"
@@ -54,28 +37,13 @@ def wait_for_cards(driver, timeout=25):
     )
 
 def autoscroll_to_bottom(driver, pause=0.8, max_tries=20):
-    last_h = driver.execute_script("return document.body.scrollHeight")
-    tries = 0
-    while tries < max_tries:
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(pause)
-        new_h = driver.execute_script("return document.body.scrollHeight")
-        if new_h == last_h:
-            time.sleep(pause)
-            new_h = driver.execute_script("return document.body.scrollHeight")
-            if new_h == last_h:
-                break
-        last_h = new_h
-        tries += 1
-
-def normalize(s: str) -> str:
-    return " ".join(s.split()) if s else s
+    autoscroll_page(driver, pause=pause, max_attempts=max_tries)
 
 def parse_date_text(text: str):
     """Return (iso, display) for 'Sep 15, 2025' etc."""
     if not text:
         return None, None
-    disp = normalize(text)
+    disp = normalize_whitespace(text)
     for fn in (
         lambda x: dateparser.parse(x, fuzzy=True),
         lambda x: datetime.strptime(x, "%b %d, %Y"),
@@ -123,14 +91,26 @@ def extract_from_html(html: str):
             title_node = a.select_one("h3.Card_headline__reaoT, h3[class*='Card_headline__']")
         if not title_node:
             title_node = a.select_one("h3")
-        title = normalize(title_node.get_text(strip=True)) if title_node else None
+        title = (
+            normalize_whitespace(title_node.get_text(strip=True))
+            if title_node
+            else None
+        )
 
         date_node = a.select_one("div.PostList_post-date__djrOA, div[class*='PostList_post-date__']")
         if not date_node:
             date_node = a.select_one("p.detail-m.agate")
         if not date_node:
             date_node = a.select_one("time[datetime], time")
-        date_text = date_node.get("datetime") if (date_node and date_node.name == "time" and date_node.has_attr("datetime")) else (normalize(date_node.get_text(strip=True)) if date_node else None)
+        date_text = (
+            date_node.get("datetime")
+            if (date_node and date_node.name == "time" and date_node.has_attr("datetime"))
+            else (
+                normalize_whitespace(date_node.get_text(strip=True))
+                if date_node
+                else None
+            )
+        )
         date_iso, date_display = parse_date_text(date_text)
 
         img = a.select_one("img")
@@ -158,23 +138,6 @@ def extract_from_html(html: str):
     return items
 
 
-def _parse_iso(dt_str: str | None) -> datetime | None:
-    if not dt_str:
-        return None
-    try:
-        dt = dateparser.parse(dt_str, fuzzy=True)
-    except Exception:
-        return None
-    if not dt:
-        return None
-    if dt.tzinfo:
-        try:
-            return dt.astimezone(timezone.utc).replace(tzinfo=None)
-        except Exception:
-            pass
-    return dt
-
-
 def scrape(headless: bool = True) -> List[Dict[str, Any]]:
     """Scrape Anthropic news and return normalized content items."""
     driver = build_driver(headless=headless)
@@ -193,20 +156,23 @@ def scrape(headless: bool = True) -> List[Dict[str, Any]]:
     raw_items = extract_from_html(html)
     normalized: List[Dict[str, Any]] = []
     for item in raw_items:
-        published_at = _parse_iso(item.get("date_iso"))
-        normalized.append({
-            "title": item.get("title"),
-            "url": item.get("url"),
-            "author": item.get("author", "Anthropic"),
-            "published_at": published_at,
-            "thumbnail_url": item.get("thumbnail"),
-            "type": item.get("type", "article"),
-            "meta_data": {
-                "source_name": "Anthropic",
-                "category": "ai_ml",
-                "date_iso": item.get("date_iso"),
-                "date_display": item.get("date_display"),
-                "extraction_method": "selenium",
-            },
-        })
+        title = item.get("title")
+        url = item.get("url")
+        if not title or not url:
+            continue
+        published_at = parse_datetime(item.get("date_iso") or item.get("date_display"))
+        normalized.append(
+            make_lab_item(
+                title=title,
+                url=url,
+                author=item.get("author") or "Anthropic",
+                published_at=published_at,
+                thumbnail_url=item.get("thumbnail"),
+                item_type=item.get("type"),
+                source_name="Anthropic",
+                extraction_method="selenium",
+                date_iso=item.get("date_iso"),
+                date_display=item.get("date_display"),
+            )
+        )
     return normalized

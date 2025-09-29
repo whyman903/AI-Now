@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 from urllib.parse import urljoin, urlparse
-from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
+
+from ._lab_scraper_utils import make_lab_item, normalize_whitespace, parse_datetime
 
 BASE = "https://qwenlm.github.io"
 INDEX_URL = "https://qwenlm.github.io/blog/"
@@ -24,13 +25,12 @@ def fetch(url: str) -> str:
     r.raise_for_status()
     return r.text
 
-def normalize(s: str) -> str:
-    return " ".join(s.split()) if s else s
-
 def parse_date(text: str):
     if not text:
         return None, None
-    disp = normalize(text)
+    disp = normalize_whitespace(text)
+    if not disp:
+        return None, None
     try:
         dt = dateparser.parse(disp, fuzzy=True)
         return dt.isoformat(), disp
@@ -103,7 +103,11 @@ def extract_index(html: str):
             continue
 
         h2 = art.select_one("header.entry-header h2")
-        title = normalize(h2.get_text(strip=True)) if h2 else None
+        title = (
+            normalize_whitespace(h2.get_text(strip=True))
+            if h2
+            else None
+        )
 
         date_span = art.select_one("footer.entry-footer span[title]") or art.select_one("footer.entry-footer span")
         date_text = None
@@ -160,7 +164,11 @@ def extract_index(html: str):
                     date_iso, date_display = iso, vis
             ctx = ctx.parent
 
-        title = normalize(title_node.get_text(strip=True)) if title_node else None
+        title = (
+            normalize_whitespace(title_node.get_text(strip=True))
+            if title_node
+            else None
+        )
         posts.append({
             "title": title,
             "date_iso": date_iso,
@@ -175,23 +183,6 @@ def extract_index(html: str):
     return posts
 
 
-def _parse_date(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        dt = dateparser.parse(value, fuzzy=True)
-    except Exception:
-        return None
-    if not dt:
-        return None
-    if dt.tzinfo:
-        try:
-            return dt.astimezone(timezone.utc).replace(tzinfo=None)
-        except Exception:
-            pass
-    return dt
-
-
 def scrape() -> List[Dict[str, Any]]:
     """Scrape the Qwen blog index and return normalized content items."""
     index_html = fetch(INDEX_URL)
@@ -199,30 +190,31 @@ def scrape() -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     
     for item in raw_items:
-        # Extract thumbnail from individual post page
+        url = item.get("url")
+        title = item.get("title")
+        if not url or not title:
+            continue
+
         thumbnail_url = None
-        if item.get("url"):
-            try:
-                post_html = fetch(item["url"])
-                thumbnail_url = extract_thumbnail_from_post(post_html)
-            except Exception as e:
-                print(f"Failed to fetch thumbnail for {item.get('url')}: {e}")
-                # Continue processing even if thumbnail extraction fails
-        
-        published_at = _parse_date(item.get("date_iso") or item.get("date_display"))
-        normalized.append({
-            "title": item.get("title"),
-            "url": item.get("url"),
-            "author": item.get("author", "Qwen"),
-            "published_at": published_at,
-            "thumbnail_url": thumbnail_url,
-            "type": item.get("type", "research_lab"),
-            "meta_data": {
-                "source_name": "Qwen",
-                "category": "ai_ml",
-                "date_iso": item.get("date_iso"),
-                "date_display": item.get("date_display"),
-                "extraction_method": "requests",
-            },
-        })
+        try:
+            post_html = fetch(url)
+            thumbnail_url = extract_thumbnail_from_post(post_html)
+        except Exception as exc:
+            print(f"Failed to fetch thumbnail for {url}: {exc}")
+
+        published_at = parse_datetime(item.get("date_iso") or item.get("date_display"))
+        normalized.append(
+            make_lab_item(
+                title=title,
+                url=url,
+                author=item.get("author") or "Qwen",
+                published_at=published_at,
+                thumbnail_url=thumbnail_url,
+                item_type=item.get("type"),
+                source_name="Qwen",
+                extraction_method="requests",
+                date_iso=item.get("date_iso"),
+                date_display=item.get("date_display"),
+            )
+        )
     return normalized
