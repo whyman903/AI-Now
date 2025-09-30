@@ -47,7 +47,7 @@ def get_content(
     types: Optional[List[str]] = Query(None, description="Filter by one or more content types."),
     exclude_type: Optional[str] = Query(None),
     order: Optional[str] = Query(None, description="Ordering strategy: 'recent' or 'interleave' (default). For research_paper, rank ordering applies."),
-    source: Optional[str] = Query(None, description="Filter by content author."),
+    source: Optional[List[str]] = Query(None, description="Filter by one or more content authors (labs)."),
     db: Session = Depends(get_db)
 ):
     """
@@ -60,7 +60,9 @@ def get_content(
     base_query = db.query(ContentItem)
 
     if source:
-        base_query = base_query.filter(ContentItem.author == source)
+        normalized_sources = [value.strip() for value in source if value and value.strip()]
+        if normalized_sources:
+            base_query = base_query.filter(ContentItem.author.in_(normalized_sources))
 
     # Filter by content type if specified
     if types:
