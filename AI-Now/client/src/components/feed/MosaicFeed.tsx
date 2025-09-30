@@ -214,7 +214,7 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
       case "youtube_video":
         return "bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800/50 hover:border-orange-400/50";
       default:
-        return "bg-[#F2EFDF] dark:bg-[#2A2823] border-[#E5E0D0] dark:border-[#3D3930] hover:border-amber-400/50";
+        return "bg-[#FAF9F5] dark:bg-[#2A2823] border-[#F0EEE8] dark:border-[#3D3930] hover:border-amber-400/50";
     }
   };
 

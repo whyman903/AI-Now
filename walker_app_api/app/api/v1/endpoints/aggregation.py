@@ -12,11 +12,16 @@ from app.db.base import get_db
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_aggregation_token
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/trigger")
+@router.post(
+    "/trigger",
+    dependencies=[Depends(require_aggregation_token)],
+)
 async def trigger_aggregation(
     background_tasks: BackgroundTasks,
     hours_back: int = 24
@@ -49,7 +54,10 @@ async def trigger_aggregation(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/aggregate-now")
+@router.post(
+    "/aggregate-now",
+    dependencies=[Depends(require_aggregation_token)],
+)
 async def aggregate_now(hours_back: int = 24) -> Dict[str, Any]:
     """
     Immediately aggregate content from all sources (synchronous).

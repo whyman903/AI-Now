@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Dict, Any
 from app.services.content_aggregator import get_content_aggregator
+from app.api.deps import require_aggregation_token
 
 LAB_FILTER_WHITELIST = {
     "Anthropic",
@@ -52,7 +53,10 @@ def get_source_types():
         "types": list(source_types)
     }
 
-@router.post("/sources/refresh/{source_name}")
+@router.post(
+    "/sources/refresh/{source_name}",
+    dependencies=[Depends(require_aggregation_token)],
+)
 async def refresh_specific_source(source_name: str):
     """Manually refresh a specific source"""
     sources = aggregator.rss_sources
