@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from urllib.parse import urljoin
@@ -10,8 +11,14 @@ import httpx
 from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
 from xml.etree import ElementTree as ET
+from selenium import webdriver
 
-from ._lab_scraper_utils import ensure_naive_utc, make_lab_item, normalize_whitespace
+from ._lab_scraper_utils import (
+    create_chrome_driver,
+    ensure_naive_utc,
+    make_lab_item,
+    normalize_whitespace,
+)
 
 BASE_URL = "https://www.deepseek.com"
 PAGE_URL = "https://www.deepseek.com/en"
@@ -52,10 +59,15 @@ logger = logging.getLogger(__name__)
 
 
 def _fetch_page(url: str = PAGE_URL) -> str:
-    with httpx.Client(headers=HEADERS, timeout=15.0, follow_redirects=True) as client:
-        resp = client.get(url)
-        resp.raise_for_status()
-        return resp.text
+    """Fetch the DeepSeek page using Selenium to bypass 403 blocking."""
+    driver = create_chrome_driver(headless=True, window_size="1400,1000")
+    try:
+        driver.get(url)
+        # Give the page a moment to render any JavaScript content
+        time.sleep(2)
+        return driver.page_source
+    finally:
+        driver.quit()
 
 def _absolutize(url: str) -> str:
     if url.startswith("//"):
@@ -226,7 +238,7 @@ def scrape() -> List[Dict[str, Any]]:
                     thumbnail_url=THUMBNAIL_URL,
                     item_type="research_lab",
                     source_name="DeepSeek",
-                    extraction_method="httpx",
+                    extraction_method="selenium",
                     date_iso=date_iso,
                     date_display=date_display,
                     extra_meta=meta_extra,
