@@ -15,7 +15,7 @@ from ._lab_scraper_utils import ensure_naive_utc, make_lab_item, normalize_white
 
 BASE_URL = "https://www.deepseek.com"
 PAGE_URL = "https://www.deepseek.com/en"
-THUMBNAIL_URL = "/images/deepseek-logo.png"
+THUMBNAIL_URL = "/static/images/deepseek-brand.png"
 GITHUB_PREFIX = "https://github.com/deepseek-ai/"
 
 HEADERS = {

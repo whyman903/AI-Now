@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Mapping, MutableMapping, Optional
+from urllib.parse import urljoin
 
 from dateutil import parser as dateparser
 from selenium import webdriver
@@ -12,6 +13,13 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
 from ._webdriver import get_chromedriver_path
+from ...core.config import settings
+
+
+_LEGACY_THUMBNAIL_REMAP = {
+    "deepseek-logo.png": "/static/images/deepseek-brand.png",
+    "thinking-machines.png": "/static/images/thinking-machines-brand.png",
+}
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -30,6 +38,34 @@ __all__ = [
     "normalize_whitespace",
     "parse_datetime",
 ]
+
+
+def _resolve_public_url(value: Optional[str]) -> Optional[str]:
+    """Convert relative asset paths into absolute URLs using configured base."""
+    if not value:
+        return value
+
+    cleaned = value.strip()
+    if not cleaned:
+        return cleaned
+
+    lower_cleaned = cleaned.lower()
+    for legacy_suffix, replacement in _LEGACY_THUMBNAIL_REMAP.items():
+        if lower_cleaned.endswith(legacy_suffix):
+            cleaned = replacement
+            break
+
+    if cleaned.startswith(("http://", "https://", "data:")):
+        return cleaned
+
+    base = (settings.PUBLIC_BASE_URL or "").strip()
+    if not base:
+        return cleaned
+
+    if not base.endswith("/"):
+        base = base + "/"
+
+    return urljoin(base, cleaned.lstrip("/"))
 
 
 def create_chrome_driver(
@@ -165,12 +201,14 @@ def make_lab_item(
     extra_fields: Optional[MutableMapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create the normalized item dictionary used by all lab scrapers."""
+    resolved_thumbnail = _resolve_public_url(thumbnail_url)
+
     item: Dict[str, Any] = {
         "title": title,
         "url": url,
         "author": author,
         "published_at": ensure_naive_utc(published_at),
-        "thumbnail_url": thumbnail_url,
+        "thumbnail_url": resolved_thumbnail,
         "type": item_type or "research_lab",
         "meta_data": build_lab_meta(
             source_name=source_name,

@@ -1,10 +1,17 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional, Set
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urljoin
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, asc, desc
 from app.db.base import get_db
 from app.db.models import ContentItem
+from app.core.config import settings
+
+_LEGACY_THUMBNAIL_REMAP = {
+    "deepseek-logo.png": "/static/images/deepseek-brand.png",
+    "thinking-machines.png": "/static/images/thinking-machines-brand.png",
+}
 
 router = APIRouter()
 
@@ -38,6 +45,33 @@ def _to_iso_utc(dt: datetime):
             return dt.isoformat()
         except Exception:
             return None
+
+
+def _resolve_public_url(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return value
+
+    cleaned = value.strip()
+    if not cleaned:
+        return cleaned
+
+    lower_cleaned = cleaned.lower()
+    for legacy_suffix, replacement in _LEGACY_THUMBNAIL_REMAP.items():
+        if lower_cleaned.endswith(legacy_suffix):
+            cleaned = replacement
+            break
+
+    if cleaned.startswith(("http://", "https://", "data:")):
+        return cleaned
+
+    base = (settings.PUBLIC_BASE_URL or "").strip()
+    if not base:
+        return cleaned
+
+    if not base.endswith("/"):
+        base = base + "/"
+
+    return urljoin(base, cleaned.lstrip("/"))
 
 @router.get("")
 def get_content(
@@ -120,15 +154,15 @@ def get_content(
             "type": item_dict.get("type"),
             "title": item_dict.get("title"),
             "url": item_dict.get("url"),
-            "sourceUrl": item_dict.get("url"),
-            "author": item_dict.get("author"),
-            "publishedAt": _to_iso_utc(item_dict.get("published_at")),
-            "thumbnailUrl": item_dict.get("thumbnail_url"),
-            "metadata": item_dict.get("meta_data"),
-            "clicks": item_dict.get("clicks"),
-            "createdAt": _to_iso_utc(item_dict.get("created_at")),
-            "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
-        })
+        "sourceUrl": item_dict.get("url"),
+        "author": item_dict.get("author"),
+        "publishedAt": _to_iso_utc(item_dict.get("published_at")),
+        "thumbnailUrl": _resolve_public_url(item_dict.get("thumbnail_url")),
+        "metadata": item_dict.get("meta_data"),
+        "clicks": item_dict.get("clicks"),
+        "createdAt": _to_iso_utc(item_dict.get("created_at")),
+        "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
+    })
     
     return {
         "items": serialized_items,
@@ -173,15 +207,15 @@ def get_trending_content(
             "type": item_dict.get("type"),
             "title": item_dict.get("title"),
             "url": item_dict.get("url"),
-            "sourceUrl": item_dict.get("url"),
-            "author": item_dict.get("author"),
-            "publishedAt": _to_iso_utc(item_dict.get("published_at")),
-            "thumbnailUrl": item_dict.get("thumbnail_url"),
-            "metadata": item_dict.get("meta_data"),
-            "clicks": item_dict.get("clicks"),
-            "createdAt": _to_iso_utc(item_dict.get("created_at")),
-            "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
-        })
+        "sourceUrl": item_dict.get("url"),
+        "author": item_dict.get("author"),
+        "publishedAt": _to_iso_utc(item_dict.get("published_at")),
+        "thumbnailUrl": _resolve_public_url(item_dict.get("thumbnail_url")),
+        "metadata": item_dict.get("meta_data"),
+        "clicks": item_dict.get("clicks"),
+        "createdAt": _to_iso_utc(item_dict.get("created_at")),
+        "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
+    })
     
     return {"items": serialized_items}
 

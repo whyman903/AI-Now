@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "FeedCurator API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    PUBLIC_BASE_URL: Optional[str] = None
     
     # Database
     DATABASE_URL: str
