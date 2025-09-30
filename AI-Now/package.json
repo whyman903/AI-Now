@@ -10,7 +10,8 @@
     "check": "tsc",
     "setup": "npm install",
     "backend:dev": "cd ../walker_app_api && uv run python main.py",
-    "backend:install": "cd ../walker_app_api && uv sync"
+    "backend:install": "cd ../walker_app_api && uv sync",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -85,24 +86,32 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.15",
-    "@tailwindcss/vite": "^4.1.3",
+    "@tailwindcss/vite": "^4.1.13",
     "@types/express": "4.17.21",
     "@types/express-session": "^1.18.0",
-    "@types/node": "20.16.11",
+    "@types/node": "^20.19.0",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@types/ws": "^8.5.13",
-    "@vitejs/plugin-react": "^4.3.2",
+    "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.20",
-    "drizzle-kit": "^0.30.6",
+    "drizzle-kit": "^0.31.5",
     "esbuild": "^0.25.0",
+    "patch-package": "^8.0.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
-    "tsx": "^4.19.1",
+    "tsx": "^4.20.6",
     "typescript": "5.6.3",
-    "vite": "^5.4.19"
+    "vite": "^7.1.7"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
+  },
+  "overrides": {
+    "@babel/helpers": "^7.26.10",
+    "brace-expansion": "^2.0.2",
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.4"
+    }
   }
 }
