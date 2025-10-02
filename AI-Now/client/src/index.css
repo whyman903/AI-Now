@@ -3,48 +3,48 @@
 @tailwind utilities;
 
 :root {
-  --background: hsl(0, 0%, 100%);
-  --foreground: hsl(240, 10%, 3.9%);
+  --background: hsl(210, 20%, 98%);
+  --foreground: hsl(220, 20%, 25%);
   --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(240, 10%, 3.9%);
+  --card-foreground: hsl(220, 20%, 25%);
   --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(240, 10%, 3.9%);
-  --primary: hsl(240, 5.9%, 10%);
-  --primary-foreground: hsl(0, 0%, 98%);
-  --secondary: hsl(240, 4.8%, 95.9%);
-  --secondary-foreground: hsl(240, 5.9%, 10%);
-  --muted: hsl(240, 4.8%, 95.9%);
-  --muted-foreground: hsl(240, 3.8%, 46.1%);
-  --accent: hsl(240, 4.8%, 95.9%);
-  --accent-foreground: hsl(240, 5.9%, 10%);
-  --destructive: hsl(0, 84.2%, 60.2%);
+  --popover-foreground: hsl(220, 20%, 25%);
+  --primary: hsl(220, 25%, 30%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(210, 20%, 92%);
+  --secondary-foreground: hsl(220, 20%, 30%);
+  --muted: hsl(210, 15%, 90%);
+  --muted-foreground: hsl(220, 10%, 50%);
+  --accent: hsl(210, 80%, 55%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 75%, 55%);
   --destructive-foreground: hsl(0, 0%, 98%);
-  --border: hsl(240, 5.9%, 90%);
-  --input: hsl(240, 5.9%, 90%);
-  --ring: hsl(240, 5.9%, 10%);
+  --border: hsl(210, 15%, 88%);
+  --input: hsl(210, 15%, 88%);
+  --ring: hsl(210, 80%, 55%);
   --radius: 0.75rem;
 }
 
 .dark {
-  --background: hsl(240, 10%, 3.9%);
-  --foreground: hsl(0, 0%, 98%);
-  --card: hsl(240, 10%, 3.9%);
-  --card-foreground: hsl(0, 0%, 98%);
-  --popover: hsl(240, 10%, 3.9%);
-  --popover-foreground: hsl(0, 0%, 98%);
-  --primary: hsl(0, 0%, 98%);
-  --primary-foreground: hsl(240, 5.9%, 10%);
-  --secondary: hsl(240, 3.7%, 15.9%);
-  --secondary-foreground: hsl(0, 0%, 98%);
-  --muted: hsl(240, 3.7%, 15.9%);
-  --muted-foreground: hsl(240, 5%, 64.9%);
-  --accent: hsl(240, 3.7%, 15.9%);
-  --accent-foreground: hsl(0, 0%, 98%);
-  --destructive: hsl(0, 62.8%, 30.6%);
+  --background: hsl(220, 20%, 12%);
+  --foreground: hsl(210, 15%, 92%);
+  --card: hsl(220, 18%, 16%);
+  --card-foreground: hsl(210, 15%, 92%);
+  --popover: hsl(220, 18%, 16%);
+  --popover-foreground: hsl(210, 15%, 92%);
+  --primary: hsl(210, 15%, 88%);
+  --primary-foreground: hsl(220, 20%, 15%);
+  --secondary: hsl(220, 15%, 22%);
+  --secondary-foreground: hsl(210, 15%, 92%);
+  --muted: hsl(220, 12%, 20%);
+  --muted-foreground: hsl(210, 8%, 60%);
+  --accent: hsl(210, 75%, 58%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 70%, 50%);
   --destructive-foreground: hsl(0, 0%, 98%);
-  --border: hsl(240, 3.7%, 15.9%);
-  --input: hsl(240, 3.7%, 15.9%);
-  --ring: hsl(240, 4.9%, 83.9%);
+  --border: hsl(220, 12%, 24%);
+  --input: hsl(220, 12%, 24%);
+  --ring: hsl(210, 75%, 58%);
 }
 
 @layer base {
@@ -54,7 +54,7 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Montserrat', sans-serif;
   }
 }
 
@@ -85,4 +85,87 @@
   -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ============================================
+   MosaicFeed Component Styles
+   ============================================ */
+
+/* Trending Papers Sidebar */
+.trending-paper-card {
+  background-color: hsl(225, 70%, 95%);
+  border-color: hsl(225, 60%, 75%);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  transform: scale(1);
+  transition: all 0.2s ease-in-out;
+}
+
+.trending-paper-card:hover {
+  border-color: hsl(225, 80%, 60%);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15), 0 6px 12px rgba(0, 0, 0, 0.1);
+  transform: scale(1.03);
+}
+
+.trending-paper-rank-badge {
+  background-color: hsl(225, 75%, 55%);
+  box-shadow: 0 2px 4px rgba(128, 128, 128, 0.2);
+}
+
+.trending-paper-title {
+  color: hsl(225, 60%, 25%);
+  transition: color 0.2s ease-in-out;
+}
+
+.trending-paper-title:hover {
+  color: hsl(225, 80%, 45%);
+}
+
+.trending-paper-github-btn {
+  background-color: hsl(225, 70%, 90%);
+  color: hsl(225, 75%, 50%);
+  transition: background-color 0.2s ease-in-out;
+}
+
+.trending-paper-github-btn:hover {
+  background-color: hsl(225, 70%, 85%);
+}
+
+.trending-papers-link {
+  color: hsl(225, 75%, 50%);
+}
+
+/* Article Cards - YouTube */
+.article-card-youtube {
+  background-color: hsl(175, 45%, 94%);
+  border-color: hsl(175, 40%, 75%);
+  box-shadow: 0 2px 6px rgba(179, 179, 179, 0.15);
+  transition: all 0.3s ease-in-out;
+}
+
+.article-card-youtube:hover {
+  border-color: hsl(175, 50%, 55%);
+  box-shadow: 0 8px 20px rgba(153, 153, 153, 0.25);
+}
+
+.dark .article-card-youtube {
+  background-color: hsl(175, 35%, 18%);
+  border-color: hsl(175, 30%, 28%);
+}
+
+/* Article Cards - Default */
+.article-card-default {
+  background-color: hsl(210, 65%, 93%);
+  border-color: hsl(210, 55%, 78%);
+  box-shadow: 0 2px 6px rgba(179, 179, 179, 0.15);
+  transition: all 0.3s ease-in-out;
+}
+
+.article-card-default:hover {
+  border-color: hsl(210, 70%, 65%);
+  box-shadow: 0 8px 20px rgba(153, 153, 153, 0.25);
+}
+
+.dark .article-card-default {
+  background-color: hsl(220, 35%, 18%);
+  border-color: hsl(220, 30%, 26%);
 }

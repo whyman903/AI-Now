@@ -131,25 +131,25 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
               {papers.slice(0, 10).map((paper, idx) => (
                 <div
                   key={paper.id}
-                  className="group cursor-pointer rounded-xl border bg-blue-700/10 border-blue-700/30 hover:border-blue-600/50 transition-colors p-3 h-24 overflow-hidden"
+                  className="trending-paper-card group cursor-pointer rounded-xl border p-3 h-24 overflow-hidden"
                   onClick={() => paper.sourceUrl && window.open(paper.sourceUrl, "_blank")}
                 >
                   <div className="flex items-start gap-3">
                     <div className="shrink-0 mt-0.5">
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-blue-700 text-white text-xs font-mono">
+                      <span className="trending-paper-rank-badge inline-flex items-center justify-center w-6 h-6 rounded-md text-white text-xs font-mono">
                         {idx + 1}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-serif text-sm font-semibold leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+                        <h3 className="trending-paper-title font-serif text-sm font-semibold leading-snug line-clamp-2">
                           {paper.title}
                         </h3>
                         {paper.metadata?.github_url && (
                           <button
                             type="button"
                             aria-label="Open associated GitHub repository"
-                            className="shrink-0 inline-flex items-center justify-center rounded-md border border-transparent bg-blue-700/15 text-blue-700 hover:bg-blue-700/25 transition-colors p-1"
+                            className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1"
                             onClick={(event) => {
                               event.stopPropagation();
                               window.open(paper.metadata?.github_url, "_blank", "noopener,noreferrer");
@@ -173,7 +173,7 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
                 href="https://huggingface.co/papers/trending"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-blue-700 hover:underline flex items-center gap-1"
+                className="trending-papers-link text-sm hover:underline flex items-center gap-1"
               >
                 View all papers
                 <ChevronRight className="h-3 w-3" />
@@ -212,9 +212,9 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
   const getCardStyleClasses = () => {
     switch (item.type) {
       case "youtube_video":
-        return "bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800/50 hover:border-orange-400/50";
+        return "article-card-youtube";
       default:
-        return "bg-[#FAF9F5] dark:bg-[#2A2823] border-[#F0EEE8] dark:border-[#3D3930] hover:border-amber-400/50";
+        return "article-card-default";
     }
   };
 
@@ -249,7 +249,7 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
 
   return (
     <div
-      className={`group cursor-pointer flex flex-col border p-4 rounded-2xl shadow-none hover:shadow-xl transition-shadow duration-300 w-full h-full overflow-hidden ${getCardStyleClasses()}`}
+      className={`group cursor-pointer flex flex-col border p-4 rounded-2xl w-full h-full overflow-hidden ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
       {!hideImage && (

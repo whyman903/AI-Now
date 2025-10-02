@@ -115,12 +115,12 @@ export function LabSidebar({
         {isExpanded ? (
           <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
             <Filter className="h-4 w-4" />
-            <span>Labs</span>
+            <span>Filter</span>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
             <Filter className="h-4 w-4" />
-            <span className="leading-none [writing-mode:vertical-rl] rotate-180">Labs</span>
+            <span className="leading-none [writing-mode:vertical-rl] rotate-180">Filter</span>
           </div>
         )}
       </div>
@@ -143,7 +143,7 @@ export function LabSidebar({
                     : "bg-primary text-primary-foreground border-primary shadow"
                 }`}
               >
-                All labs
+                All orgs
               </button>
               {isLoading && (
                 <span className="inline-flex items-center gap-2 text-xs text-muted-foreground px-2 py-1">
