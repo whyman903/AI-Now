@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     
     # Content processing settings
     MAX_CONTENT_AGE_DAYS: int = 30
-    CONTENT_FETCH_INTERVAL_HOURS: int = 6
+    CONTENT_FETCH_INTERVAL_HOURS: int = 12
     
     # Background task settings
     BACKGROUND_TASK_SHUTDOWN_TIMEOUT: float = 5.0
