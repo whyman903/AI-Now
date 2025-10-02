@@ -21,6 +21,7 @@ from app.services.aggregation_sources import (
     huggingface_agg,
     moonshot_agg,
     openai_agg,
+    perplexity_agg,
     qwen_agg,
     thinkingmachines_agg,
     xai_agg,
@@ -81,6 +82,7 @@ class ContentAggregator:
             {"name": "Qwen", "category": "ai_ml", "scrape_func": qwen_agg.scrape},
             {"name": "Moonshot", "category": "ai_ml", "scrape_func": moonshot_agg.scrape},
             {"name": "OpenAI", "category": "ai_ml", "scrape_func": openai_agg.scrape},
+            {"name": "Perplexity", "category": "ai_ml", "scrape_func": perplexity_agg.scrape},
             {
                 "name": "Thinking Machines",
                 "category": "ai_ml",

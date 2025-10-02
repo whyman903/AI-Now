@@ -12,6 +12,7 @@ LAB_FILTER_WHITELIST = {
     "Moonshot",
     "DeepSeek",
     "Thinking Machines",
+    "Perplexity",
 }
 
 router = APIRouter()
