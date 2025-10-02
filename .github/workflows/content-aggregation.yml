@@ -1,0 +1,41 @@
+name: Content Aggregation
+
+on:
+  # Run every 24 hours at 00:00 UTC
+  schedule:
+    - cron: '0 0 * * *'
+  
+  # Allow manual triggering from GitHub UI
+  workflow_dispatch:
+
+jobs:
+  aggregate-content:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger Content Aggregation
+        run: |
+          response=$(curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/aggregation/trigger" \
+            -H "X-Aggregation-Token: ${{ secrets.AGGREGATION_SERVICE_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -w "\n%{http_code}" \
+            -s)
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "HTTP Status: $http_code"
+          echo "Response: $body"
+          
+          if [ "$http_code" -ne 200 ]; then
+            echo "❌ Aggregation failed with status $http_code"
+            exit 1
+          fi
+          
+          echo "✅ Aggregation triggered successfully"
+      
+      - name: Notification
+        if: failure()
+        run: |
+          echo "⚠️ Content aggregation failed. Check the logs above."
+

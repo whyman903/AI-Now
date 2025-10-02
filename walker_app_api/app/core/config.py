@@ -3,7 +3,7 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "FeedCurator API"
+    PROJECT_NAME: str = "AI-Now API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     PUBLIC_BASE_URL: Optional[str] = None
