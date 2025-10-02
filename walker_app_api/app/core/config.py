@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
 
     # CORS settings
-    CORS_ORIGINS: str = "http://localhost:5173,ai-now.vercel.app,http://localhost:5174,http://localhost:5000,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,https://ai-now.vercel.app,http://localhost:5174,http://localhost:5000,http://localhost:3000"
     
     # HTTP client settings
     HTTP_CLIENT_TIMEOUT: float = 30.0
