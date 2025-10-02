@@ -1,0 +1,35 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: walker-app-db
+    plan: free
+    databaseName: walker_app_db
+    databaseUser: walker_app_user
+    ipAllowList: []
+
+  # FastAPI Backend
+  - type: web
+    name: walker-app-api
+    env: python
+    plan: free
+    buildCommand: "pip install uv && uv pip install --system -r requirements.txt"
+    startCommand: "alembic upgrade head && gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: walker-app-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "https://your-frontend-domain.vercel.app,http://localhost:5173"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOG_FORMAT
+        value: json
+      - key: AGGREGATION_SERVICE_TOKEN
+        generateValue: true
+

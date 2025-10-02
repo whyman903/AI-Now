@@ -51,7 +51,7 @@ export function LabSidebar({
   const selectionSummary = useMemo(() => {
     const sourcesPart = selectedLabs.length
       ? selectedLabs.map((lab) => lab.label).join(", ")
-      : "All labs";
+      : "All Orgs";
     const typesPart = selectedContentTypes.length
       ? selectedContentTypes.map((type) => type.label).join(", ")
       : "All content types";
@@ -143,7 +143,7 @@ export function LabSidebar({
                     : "bg-primary text-primary-foreground border-primary shadow"
                 }`}
               >
-                All orgs
+                All Orgs
               </button>
               {isLoading && (
                 <span className="inline-flex items-center gap-2 text-xs text-muted-foreground px-2 py-1">
