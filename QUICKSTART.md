@@ -47,7 +47,7 @@ git push
    - **Environment**: `Python 3`
    - **Build Command**:
      ```
-     pip install uv && uv pip install --system -r requirements.txt
+     pip install --upgrade pip && pip install -r requirements.txt
      ```
    - **Start Command**:
      ```
@@ -66,6 +66,7 @@ Click **"Advanced"** → Add these:
 | `CORS_ORIGINS` | `http://localhost:5173` *(update after Vercel deploy)* |
 | `LOG_LEVEL` | `INFO` |
 | `LOG_FORMAT` | `json` |
+| `PYTHON_VERSION` | `3.11.9` |
 
 ### D. Deploy
 Click **"Create Web Service"**
