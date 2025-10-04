@@ -13,7 +13,6 @@ def check_env_vars():
     
     required_vars = {
         "DATABASE_URL": "Database connection string",
-        "SECRET_KEY": "Secret key for cryptographic operations",
         "AGGREGATION_SERVICE_TOKEN": "Token for aggregation endpoints",
     }
     
@@ -33,8 +32,6 @@ def check_env_vars():
             # Security checks
             if var == "AGGREGATION_SERVICE_TOKEN" and len(value) < 32:
                 print(f"  ⚠️  {var}: Token is too short (minimum 32 chars)")
-            elif var == "SECRET_KEY" and len(value) < 32:
-                print(f"  ⚠️  {var}: Secret is too short (minimum 32 chars)")
             elif var == "DATABASE_URL" and value.startswith("sqlite"):
                 print(f"  ⚠️  {var}: Using SQLite (not recommended for production)")
             else:

@@ -77,7 +77,7 @@ main_folder/
    python3 generate-keys.py
    
    # Create .env file in walker_app_api/
-   # Add DATABASE_URL, SECRET_KEY, AGGREGATION_SERVICE_TOKEN
+   # Add DATABASE_URL, AGGREGATION_SERVICE_TOKEN
    ```
 
 3. **Start services**

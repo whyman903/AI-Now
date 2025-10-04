@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Generate secure random keys for deployment.
-Run this to generate SECRET_KEY and AGGREGATION_SERVICE_TOKEN.
+Run this to generate AGGREGATION_SERVICE_TOKEN.
 """
 
 import secrets
@@ -15,11 +15,7 @@ if __name__ == "__main__":
     print("🔐 Secure Key Generator")
     print("=" * 60)
     print()
-    print("Copy these values into your Render environment variables:")
-    print()
-    print("-" * 60)
-    print("SECRET_KEY:")
-    print(generate_key(32))
+    print("Copy this value into your Render environment variables:")
     print()
     print("-" * 60)
     print("AGGREGATION_SERVICE_TOKEN:")
@@ -27,6 +23,6 @@ if __name__ == "__main__":
     print()
     print("-" * 60)
     print()
-    print("✅ Keep these secure! Don't commit them to Git.")
+    print("✅ Keep this secure! Don't commit it to Git.")
     print("=" * 60)
 

@@ -15,7 +15,6 @@ python3 generate-keys.py
 ```
 
 **Save the output!** You'll need:
-- `SECRET_KEY`
 - `AGGREGATION_SERVICE_TOKEN`
 
 ### 2. Push to GitHub
@@ -61,7 +60,6 @@ Click **"Advanced"** → Add these:
 | Variable | Value |
 |----------|-------|
 | `DATABASE_URL` | Paste Internal Database URL from step A |
-| `SECRET_KEY` | From generate-keys.py output |
 | `AGGREGATION_SERVICE_TOKEN` | From generate-keys.py output |
 | `CORS_ORIGINS` | `http://localhost:5173` *(update after Vercel deploy)* |
 | `LOG_LEVEL` | `INFO` |

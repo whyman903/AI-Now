@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str
-    SECRET_KEY: str
     DB_POOL_SIZE: int = 5  # Connection pool size
     DB_MAX_OVERFLOW: int = 10  # Max connections beyond pool_size
     DB_POOL_TIMEOUT: int = 30  # Seconds to wait for connection
@@ -51,6 +50,7 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        extra = "ignore"  # Ignore extra environment variables
 
 
 settings = Settings()

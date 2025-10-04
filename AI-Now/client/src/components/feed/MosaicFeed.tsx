@@ -142,7 +142,7 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="trending-paper-title font-serif text-sm font-semibold leading-snug line-clamp-2">
+                        <h3 className={`trending-paper-title font-serif ${paper.title.length > 100 ? "text-xs" : "text-sm"} font-semibold leading-snug line-clamp-2`}>
                           {paper.title}
                         </h3>
                         {paper.metadata?.github_url && (
@@ -244,18 +244,60 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
     }
   };
 
-  const titleClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
+  const isYouTube = item.type === "youtube_video";
+  let titleClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
   const summaryClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
+  const titleLength = item.title.trim().length;
+  let titleSize = "text-lg";
+
+  const longTitleRules = [
+    {
+      minLength: 200,
+      size: "text-xs",
+      clampWithImage: "line-clamp-5",
+      clampWithoutImage: "line-clamp-7",
+    },
+    {
+      minLength: 160,
+      size: "text-sm",
+      clampWithImage: "line-clamp-4",
+      clampWithoutImage: "line-clamp-6",
+    },
+    {
+      minLength: 100,
+      size: "text-base",
+      clampWithImage: "line-clamp-3",
+      clampWithoutImage: "line-clamp-5",
+    },
+  ];
+
+  for (const rule of longTitleRules) {
+    if (titleLength >= rule.minLength) {
+      titleSize = rule.size;
+      titleClamp = hideImage ? rule.clampWithoutImage : rule.clampWithImage;
+      break;
+    }
+  }
+
+  if (!hideImage && isYouTube) {
+    const clampMap: Record<string, string> = {
+      "line-clamp-2": "line-clamp-3",
+      "line-clamp-3": "line-clamp-4",
+      "line-clamp-4": "line-clamp-5",
+      "line-clamp-5": "line-clamp-6",
+    };
+    titleClamp = clampMap[titleClamp] ?? titleClamp;
+  }
 
   return (
     <div
-      className={`group cursor-pointer flex flex-col border p-4 rounded-2xl w-full h-full overflow-hidden ${getCardStyleClasses()}`}
+      className={`group cursor-pointer flex flex-col p-4 rounded-2xl w-full h-full overflow-hidden ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
       {!hideImage && (
         <div
-          className="overflow-hidden rounded-xl w-full flex items-center justify-center"
-          style={{ height: `${imageHeight}px` }}
+          className="overflow-hidden rounded-xl w-full flex items-center justify-center relative"
+          style={{ height: `${imageHeight}px`, zIndex: 1 }}
         >
           <img
             src={item.thumbnailUrl ?? undefined}
@@ -269,7 +311,7 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
         </div>
       )}
 
-      <div className={`flex flex-col justify-start flex-grow overflow-hidden ${!hideImage ? "pt-3" : ""}`}>
+      <div className={`flex flex-col justify-start flex-grow overflow-hidden relative ${!hideImage ? "pt-3" : ""}`} style={{ zIndex: 1 }}>
         <div>
           <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
             <div className="flex items-center">
@@ -299,9 +341,7 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
             </div>
           </div>
 
-          <h3
-            className={`font-serif font-bold text-lg mb-2 leading-tight group-hover:text-primary transition-colors ${titleClamp}`}
-          >
+          <h3 className={`font-serif font-bold ${titleSize} mb-2 leading-tight group-hover:text-primary transition-colors ${titleClamp}`}>
             {item.title}
           </h3>
 

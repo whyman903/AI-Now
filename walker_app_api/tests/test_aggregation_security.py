@@ -8,7 +8,6 @@ import os
 
 # Must set environment variables before importing the app
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["AGGREGATION_SERVICE_TOKEN"] = "test-token-" + "x" * 32
 
 from walker_app_api.main import app

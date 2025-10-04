@@ -22,8 +22,6 @@ services:
         fromDatabase:
           name: walker-app-db
           property: connectionString
-      - key: SECRET_KEY
-        generateValue: true
       - key: CORS_ORIGINS
         value: "https://your-frontend-domain.vercel.app,http://localhost:5173"
       - key: LOG_LEVEL
