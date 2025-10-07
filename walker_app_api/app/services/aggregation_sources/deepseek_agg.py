@@ -19,10 +19,11 @@ from ._lab_scraper_utils import (
     make_lab_item,
     normalize_whitespace,
 )
+from app.core.config import settings
 
 BASE_URL = "https://www.deepseek.com"
 PAGE_URL = "https://www.deepseek.com/en"
-THUMBNAIL_URL = "/static/images/deepseek-brand.png"
+THUMBNAIL_URL = f"{settings.PUBLIC_BASE_URL or 'http://localhost:8000'}/static/images/deepseek-brand.png"
 GITHUB_PREFIX = "https://github.com/deepseek-ai/"
 
 HEADERS = {

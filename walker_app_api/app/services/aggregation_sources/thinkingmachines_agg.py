@@ -10,10 +10,11 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ._lab_scraper_utils import make_lab_item, normalize_whitespace, parse_datetime
+from app.core.config import settings
 
 BASE_URL = "https://thinkingmachines.ai"
 LISTING_URL = f"{BASE_URL}/blog/"
-THUMBNAIL_URL = "/static/images/thinking-machines-brand.png"
+THUMBNAIL_URL = f"{settings.PUBLIC_BASE_URL or 'http://localhost:8000'}/static/images/thinking-machines-brand.png"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) "
