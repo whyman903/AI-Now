@@ -23,6 +23,7 @@ from app.services.aggregation_sources import (
     openai_agg,
     perplexity_agg,
     qwen_agg,
+    tavily_trending,
     thinkingmachines_agg,
     xai_agg,
 )
@@ -90,6 +91,7 @@ class ContentAggregator:
                 "scrape_func": thinkingmachines_agg.scrape,
             },
             {"name": "Hugging Face Papers", "category": "ai_ml", "scrape_func": huggingface_agg.scrape_trending_papers},
+            {"name": "Tavily AI Trends", "category": "ai_ml", "scrape_func": tavily_trending.scrape},
         ]
 
 
@@ -138,6 +140,68 @@ class ContentAggregator:
             results["duration_seconds"],
         )
         return results
+
+    async def aggregate_selective(self, rss: bool, youtube: bool, all_scrapers: bool, scrapers: Optional[List[str]]) -> Dict[str, Any]:
+        start = self._utcnow_naive()
+        results = {"started_at": start.isoformat(), "sources": {}, "total_new_items": 0, "total_items_updated": 0, "items_with_thumbnails": 0, "errors": []}
+        
+        tasks, names = [], []
+        if rss:
+            tasks.append(self._aggregate_rss_feeds())
+            names.append("rss_feeds")
+        if youtube:
+            tasks.append(self._aggregate_youtube_channels())
+            names.append("youtube_channels")
+        if all_scrapers:
+            tasks.append(self._aggregate_web_scrapers())
+            names.append("web_scrapers")
+        elif scrapers:
+            selected = [s for s in self.web_scraper_sources if s["name"] in scrapers]
+            tasks.append(self._run_scrapers_batch(selected))
+            names.append("web_scrapers")
+        
+        for name, outcome in zip(names, await asyncio.gather(*tasks, return_exceptions=True), strict=False):
+            if isinstance(outcome, Exception):
+                results["errors"].append(f"{name}: {outcome}")
+                results["sources"][name] = {"error": str(outcome)}
+            else:
+                results["sources"][name] = outcome
+                results["total_new_items"] += outcome.get("items_added", 0)
+                results["total_items_updated"] += outcome.get("items_updated", 0)
+                results["items_with_thumbnails"] += outcome.get("items_with_thumbnails", 0)
+        
+        end = self._utcnow_naive()
+        results["completed_at"] = end.isoformat()
+        results["duration_seconds"] = (end - start).total_seconds()
+        return results
+    
+    async def _run_scrapers_batch(self, scrapers: List[Dict[str, Any]]) -> Dict[str, Any]:
+        items_processed = items_added = items_with_thumbnails = items_updated = 0
+        for source in scrapers:
+            try:
+                raw_items = await asyncio.to_thread(source["scrape_func"])
+                normalized = [
+                    {
+                        "type": item.get("type", "article"),
+                        "title": item.get("title"),
+                        "url": item.get("url"),
+                        "author": item.get("author"),
+                        "published_at": self._to_utc_naive(item.get("published_at")) if isinstance(item.get("published_at"), datetime) else item.get("published_at", self._utcnow_naive()),
+                        "thumbnail_url": item.get("thumbnail_url"),
+                        "meta_data": item.get("meta_data", {}),
+                    }
+                    for item in (raw_items or []) if item and item.get("title") and item.get("url")
+                ]
+                if normalized:
+                    items_processed += len(normalized)
+                    stats = await self._persist_items(normalized)
+                    items_added += stats.get("items_added", 0)
+                    items_with_thumbnails += stats.get("items_with_thumbnails", 0)
+                    items_updated += stats.get("items_updated", 0)
+                    logger.info(f"Processed {source['name']}: {len(normalized)} items, {stats.get('items_added', 0)} new")
+            except Exception as e:
+                logger.error(f"Scraper {source['name']} failed: {e}")
+        return {"items_processed": items_processed, "items_added": items_added, "items_with_thumbnails": items_with_thumbnails, "items_updated": items_updated}
 
     async def _aggregate_rss_feeds(self) -> Dict[str, Any]:
         logger.info("Aggregating RSS feeds...")

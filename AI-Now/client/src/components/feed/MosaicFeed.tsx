@@ -11,6 +11,7 @@ import {
   Github,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import ReactMarkdown from "react-markdown";
 import type { ContentItem } from "@shared/schema";
 
 interface MosaicContentItem extends ContentItem {
@@ -43,9 +44,27 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
     return !latest || scrapeDate > latest ? scrapeDate : latest;
   }, null);
 
+  // Get only the latest AI Trends summary
+  const aiTrendsSummaries = items.filter(
+    (item) => item.metadata?.source_name === "Tavily AI Trends"
+  );
+  const latestAiTrends = aiTrendsSummaries.length > 0
+    ? aiTrendsSummaries.reduce((latest, current) =>
+        (current.publishedAt ?? "") > (latest.publishedAt ?? "") ? current : latest
+      )
+    : null;
+
   const regularContent = items.filter(
     (item) => item.metadata?.source_name !== "Hugging Face Papers"
   );
+
+  // Remove old AI Trends summaries, keep only the latest
+  const contentWithLatestTrends = regularContent.filter(
+    (item) => item.metadata?.source_name !== "Tavily AI Trends"
+  );
+    const finalContent = latestAiTrends 
+    ? [latestAiTrends, ...contentWithLatestTrends]
+    : contentWithLatestTrends;
 
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const [sidebarRows, setSidebarRows] = useState<number>(0);
@@ -90,6 +109,25 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
     };
   }, [papers.length, rowPx]);
 
+  const renderGridItems = (content: MosaicContentItem[], startIndex: number) =>
+    content.map((item, index) => {
+      const absoluteIndex = startIndex + index;
+      const isAiTrendsTile = item.metadata?.source_name === "Tavily AI Trends";
+      const isFeatured = isLg && absoluteIndex === 0 && isAiTrendsTile;
+      const sizeClasses = isFeatured ? " lg:col-span-2 lg:row-span-2" : "";
+      const cardHeight = isFeatured ? imageHeight * 2 + GRID_GAP_PX : imageHeight;
+
+      return (
+        <div key={item.id} className={`col-span-1 row-span-1 h-full${sizeClasses}`}>
+          <ArticleCard
+            item={item}
+            imageHeight={cardHeight}
+            variant={isFeatured ? "featured" : "default"}
+          />
+        </div>
+      );
+    });
+
   return (
     <div className="p-2 sm:p-3 lg:p-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
@@ -107,11 +145,7 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 h-full"
               style={{ gridAutoRows: `${rowPx}px` }}
             >
-              {regularContent.slice(0, sidebarRows * 3).map((item) => (
-                <div key={item.id} className="col-span-1 row-span-1 h-full">
-                  <ArticleCard item={item} imageHeight={imageHeight} />
-                </div>
-              ))}
+              {renderGridItems(finalContent.slice(0, sidebarRows * 3), 0)}
             </div>
           </div>
         )}
@@ -187,11 +221,10 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
             style={{ gridAutoRows: `${rowPx}px` }}
           >
-            {(isLg ? regularContent.slice(sidebarRows * 3) : regularContent).map((item) => (
-              <div key={item.id} className="col-span-1 row-span-1 h-full">
-                <ArticleCard item={item} imageHeight={imageHeight} />
-              </div>
-            ))}
+            {renderGridItems(
+              isLg ? finalContent.slice(sidebarRows * 3) : finalContent,
+              isLg ? sidebarRows * 3 : 0
+            )}
           </div>
         </div>
       </div>
@@ -202,14 +235,19 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
 interface ArticleCardProps {
   item: MosaicContentItem;
   imageHeight: number;
+  variant?: "default" | "featured";
 }
 
-function ArticleCard({ item, imageHeight }: ArticleCardProps) {
+function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProps) {
   const hasThumbnail = !!item.thumbnailUrl;
   const [hideImage, setHideImage] = useState(!hasThumbnail);
   const githubUrl = item.metadata?.github_url as string | undefined;
+  const isAiTrends = item.metadata?.source_name === "Tavily AI Trends";
 
   const getCardStyleClasses = () => {
+    if (isAiTrends) {
+      return "relative overflow-hidden border-2 border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/10 hover:border-primary/40 hover:shadow-lg";
+    }
     switch (item.type) {
       case "youtube_video":
         return "article-card-youtube";
@@ -219,6 +257,9 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
   };
 
   const getIcon = () => {
+    if (isAiTrends) {
+      return <TrendingUp className="h-4 w-4 text-primary" />;
+    }
     if (item.metadata?.source_name === "Hugging Face Papers") {
       return <FlaskConical className="h-4 w-4" />;
     }
@@ -245,55 +286,68 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
   };
 
   const isYouTube = item.type === "youtube_video";
-  let titleClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
-  const summaryClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
+  const baseTitleClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
+  let titleClamp = baseTitleClamp;
+  
+  // AI Trends should show full summary without truncation
+  let summaryClamp = hideImage
+    ? "line-clamp-3"
+    : variant === "featured"
+    ? "line-clamp-4"
+    : "line-clamp-2";
+  
+  if (isAiTrends) {
+    summaryClamp = ""; // Show full text for AI Trends (no clamp)
+    titleClamp = ""; // Don't clamp AI Trends title either
+  }
+  
   const titleLength = item.title.trim().length;
-  let titleSize = "text-lg";
+  let titleSize = isAiTrends ? "text-xl" : "text-lg"; // Bigger title for AI Trends
 
   const longTitleRules = [
-    {
-      minLength: 200,
-      size: "text-xs",
-      clampWithImage: "line-clamp-5",
-      clampWithoutImage: "line-clamp-7",
-    },
-    {
-      minLength: 160,
-      size: "text-sm",
-      clampWithImage: "line-clamp-4",
-      clampWithoutImage: "line-clamp-6",
-    },
-    {
-      minLength: 100,
-      size: "text-base",
-      clampWithImage: "line-clamp-3",
-      clampWithoutImage: "line-clamp-5",
-    },
+    { minLength: 220, size: "text-xs" },
+    { minLength: 170, size: "text-sm" },
+    { minLength: 130, size: "text-base" },
   ];
 
-  for (const rule of longTitleRules) {
-    if (titleLength >= rule.minLength) {
-      titleSize = rule.size;
-      titleClamp = hideImage ? rule.clampWithoutImage : rule.clampWithImage;
-      break;
+  // Don't apply long title rules to AI Trends
+  if (!isAiTrends) {
+    for (const rule of longTitleRules) {
+      if (titleLength >= rule.minLength) {
+        titleSize = rule.size;
+        break;
+      }
+    }
+
+    if (titleLength >= 170 && hideImage) {
+      titleClamp = "line-clamp-2";
     }
   }
 
-  if (!hideImage && isYouTube) {
-    const clampMap: Record<string, string> = {
-      "line-clamp-2": "line-clamp-3",
-      "line-clamp-3": "line-clamp-4",
-      "line-clamp-4": "line-clamp-5",
-      "line-clamp-5": "line-clamp-6",
-    };
-    titleClamp = clampMap[titleClamp] ?? titleClamp;
+  const containerPadding = variant === "featured" ? "lg:p-6" : "";
+  const featuredTitleBoost = variant === "featured" && titleLength < 160 && !isAiTrends;
+  if (featuredTitleBoost) {
+    titleSize = "text-2xl";
+    if (!hideImage) {
+      titleClamp = "line-clamp-3";
+    }
   }
+
+  const titleMargin = titleLength >= 170 ? "mb-1" : titleLength >= 120 ? "mb-2" : "mb-3";
 
   return (
     <div
-      className={`group cursor-pointer flex flex-col p-4 rounded-2xl w-full h-full overflow-hidden ${getCardStyleClasses()}`}
+      className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full overflow-hidden ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
+      {/* Decorative background for AI Trends */}
+      {isAiTrends && (
+        <>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-16 translate-x-16 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl translate-y-16 -translate-x-16 pointer-events-none" />
+        </>
+      )}
+
       {!hideImage && (
         <div
           className="overflow-hidden rounded-xl w-full flex items-center justify-center relative"
@@ -313,55 +367,89 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
 
       <div className={`flex flex-col justify-start flex-grow overflow-hidden relative ${!hideImage ? "pt-3" : ""}`} style={{ zIndex: 1 }}>
         <div>
-          <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
-            <div className="flex items-center">
-              {getIcon()}
-              <span className="ml-2 capitalize">{item.type.replace("_", " ")}</span>
+          {!isAiTrends && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+              <div className="flex items-center">
+                {getIcon()}
+                <span className="ml-2 capitalize">{item.type.replace("_", " ")}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {githubUrl && (
+                  <button
+                    type="button"
+                    aria-label="Open associated GitHub repository"
+                    className="inline-flex items-center justify-center rounded-md border border-transparent bg-muted text-foreground hover:bg-muted/80 transition-colors p-1"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      window.open(githubUrl, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    <Github className="h-4 w-4" />
+                  </button>
+                )}
+                {item.metadata?.source_name === "Hugging Face Papers" && (
+                  <Badge variant="outline" className="text-xs px-2 py-0 h-5 flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3" />
+                    Trending
+                  </Badge>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {githubUrl && (
-                <button
-                  type="button"
-                  aria-label="Open associated GitHub repository"
-                  className="inline-flex items-center justify-center rounded-md border border-transparent bg-muted text-foreground hover:bg-muted/80 transition-colors p-1"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    window.open(githubUrl, "_blank", "noopener,noreferrer");
-                  }}
-                >
-                  <Github className="h-4 w-4" />
-                </button>
-              )}
-              {item.metadata?.source_name === "Hugging Face Papers" && (
-                <Badge variant="outline" className="text-xs px-2 py-0 h-5 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  Trending
-                </Badge>
-              )}
-            </div>
-          </div>
+          )}
 
-          <h3 className={`font-serif font-bold ${titleSize} mb-2 leading-tight group-hover:text-primary transition-colors ${titleClamp}`}>
-            {item.title}
+          <h3 className={`font-serif font-bold ${titleSize} ${titleMargin} leading-tight group-hover:text-primary transition-colors ${titleClamp}`}>
+            {isAiTrends ? "What's Happening?" : item.title}
           </h3>
 
-          {item.aiSummary && (
-            <p className={`text-muted-foreground text-base ${summaryClamp} mb-3 leading-snug`}>
-              {item.aiSummary}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between text-sm text-muted-foreground mt-auto pt-2">
-          <div className="font-medium truncate">{item.author || "Unknown"}</div>
-          {item.publishedAt && (
-            <div className="shrink-0 ml-2">
-              {formatDistanceToNow(new Date(item.publishedAt), {
-                addSuffix: true,
-              })}
+          {/* Only show summary for AI Trends digest */}
+          {isAiTrends && item.metadata?.summary && (
+            <div className={`text-foreground ${summaryClamp} leading-relaxed prose max-w-none`}>
+              <ReactMarkdown
+                components={{
+                  a: ({ node, ...props }) => (
+                    <a
+                      {...props}
+                      className="text-primary hover:text-primary/80 underline transition-colors"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ),
+                  ol: ({ node, ...props }) => (
+                    <ol {...props} className="space-y-4 list-decimal pl-6 marker:font-semibold marker:text-primary/70" />
+                  ),
+                  ul: ({ node, ...props }) => (
+                    <ul {...props} className="space-y-2 list-disc pl-5" />
+                  ),
+                  li: ({ node, ...props }) => (
+                    <li {...props} className="text-base leading-relaxed" />
+                  ),
+                  p: ({ node, ...props }) => (
+                    <p {...props} className="text-base leading-relaxed" />
+                  ),
+                  strong: ({ node, ...props }) => (
+                    <strong {...props} className="font-semibold text-foreground" />
+                  ),
+                }}
+              >
+                {item.metadata.summary.replace(/\\n/g, '\n')}
+              </ReactMarkdown>
             </div>
           )}
         </div>
+
+        {!isAiTrends && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground mt-auto pt-2 min-h-[2.25rem]">
+            <div className="font-medium truncate">{item.author || "Unknown"}</div>
+            {item.publishedAt && (
+              <div className="shrink-0 ml-2">
+                {formatDistanceToNow(new Date(item.publishedAt), {
+                  addSuffix: true,
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

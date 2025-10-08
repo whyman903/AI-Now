@@ -2,22 +2,24 @@
 name = "walker-app-api"
 version = "0.1.0"
 description = "FastAPI backend for AI-Now content aggregation"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-    "fastapi==0.104.1",
-    "uvicorn[standard]==0.24.0",
-    "pydantic[email]==2.5.0",
-    "pydantic-settings==2.1.0",
-    "python-multipart==0.0.6",
-    "httpx==0.25.2",
-    "requests==2.31.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic[email]>=2.10",
+    "pydantic-settings>=2.6.0",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "requests>=2.32.2",
     "sqlalchemy==2.0.23",
     "alembic==1.13.1",
     "psycopg2-binary==2.9.9",
     "feedparser==6.0.10",
     "beautifulsoup4==4.12.2",
-    "lxml==4.9.3",
+    "lxml>=5.3.0",
     "numpy>=1.25.0",
+    "pydantic-ai==1.0.15",
+    "tavily-python>=0.7.12",
     "scikit-learn>=1.3.0",
     "python-jose[cryptography]==3.3.0",
     "passlib[bcrypt]==1.7.4",
