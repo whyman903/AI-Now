@@ -213,16 +213,59 @@ def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) ->
     return published_at, meta
 
 
+def _fetch_repos_from_github_api() -> List[Dict[str, str]]:
+    """Fetch DeepSeek repos directly from GitHub API instead of scraping their website."""
+    try:
+        with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+            # Get repositories sorted by most recently updated
+            response = client.get(
+                "https://api.github.com/users/deepseek-ai/repos",
+                params={"sort": "updated", "per_page": 15},
+                headers={"Accept": "application/vnd.github.v3+json"},
+            )
+            response.raise_for_status()
+            repos = response.json()
+            
+            results = []
+            for repo in repos:
+                # Filter for main model repos (not forks, archives, or utility repos)
+                if repo.get("fork") or repo.get("archived"):
+                    continue
+                    
+                name = repo.get("name", "")
+                # Focus on main DeepSeek model repos
+                if not any(keyword in name.lower() for keyword in ["deepseek", "model", "coder", "3fs"]):
+                    continue
+                
+                results.append({
+                    "title": name.replace("-", " "),
+                    "url": repo["html_url"],
+                    "description": repo.get("description", ""),
+                })
+            
+            return results
+    except Exception as exc:
+        logger.error(f"Failed to fetch DeepSeek repos from GitHub API: {exc}")
+        return []
+
+
 def scrape() -> List[Dict[str, Any]]:
-    html = _fetch_page()
-    items = _extract_research_links(html)
+    """Scrape DeepSeek content using GitHub API (website blocks Selenium)."""
+    items = _fetch_repos_from_github_api()
+    
+    if not items:
+        logger.warning("DeepSeek scraper: No items found from GitHub API")
+        return []
 
     normalized: List[Dict[str, Any]] = []
     with httpx.Client(headers=GITHUB_PAGE_HEADERS, timeout=10.0, follow_redirects=True) as gh_client:
         for item in items:
             published_at, repo_meta = _fetch_readme_metadata(item["url"], client=gh_client)
 
-            meta_extra: Dict[str, Any] = {"section": "Research"}
+            meta_extra: Dict[str, Any] = {
+                "section": "Research",
+                "description": item.get("description", ""),
+            }
             repo_meta = repo_meta or {}
             date_iso = repo_meta.get("date_iso")
             date_display = repo_meta.get("date_display")
@@ -239,7 +282,7 @@ def scrape() -> List[Dict[str, Any]]:
                     thumbnail_url=THUMBNAIL_URL,
                     item_type="research_lab",
                     source_name="DeepSeek",
-                    extraction_method="selenium",
+                    extraction_method="github_api",
                     date_iso=date_iso,
                     date_display=date_display,
                     extra_meta=meta_extra,

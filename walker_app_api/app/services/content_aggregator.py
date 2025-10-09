@@ -177,31 +177,68 @@ class ContentAggregator:
     
     async def _run_scrapers_batch(self, scrapers: List[Dict[str, Any]]) -> Dict[str, Any]:
         items_processed = items_added = items_with_thumbnails = items_updated = 0
-        for source in scrapers:
-            try:
-                raw_items = await asyncio.to_thread(source["scrape_func"])
-                normalized = [
-                    {
-                        "type": item.get("type", "article"),
-                        "title": item.get("title"),
-                        "url": item.get("url"),
-                        "author": item.get("author"),
-                        "published_at": self._to_utc_naive(item.get("published_at")) if isinstance(item.get("published_at"), datetime) else item.get("published_at", self._utcnow_naive()),
-                        "thumbnail_url": item.get("thumbnail_url"),
-                        "meta_data": item.get("meta_data", {}),
-                    }
-                    for item in (raw_items or []) if item and item.get("title") and item.get("url")
-                ]
-                if normalized:
-                    items_processed += len(normalized)
-                    stats = await self._persist_items(normalized)
+        
+        # Separate slow scrapers to run in parallel with batches
+        slow_scrapers = [s for s in scrapers if "Tavily" in s["name"]]
+        fast_scrapers = [s for s in scrapers if "Tavily" not in s["name"]]
+        
+        # Start slow scrapers as background tasks immediately
+        slow_tasks = [self._process_web_scraper(source) for source in slow_scrapers]
+        
+        # Process fast scrapers in parallel batches
+        batch_size = 3
+        for i in range(0, len(fast_scrapers), batch_size):
+            batch = fast_scrapers[i : i + batch_size]
+            tasks = [self._process_web_scraper(source) for source in batch]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for source_config, result in zip(batch, batch_results, strict=False):
+                if isinstance(result, Exception):
+                    logger.error("Scraper %s failed: %s", source_config["name"], result)
+                    continue
+                if not result:
+                    continue
+                
+                items_processed += len(result)
+                stats = await self._persist_items(result)
+                items_added += stats.get("items_added", 0)
+                items_with_thumbnails += stats.get("items_with_thumbnails", 0)
+                items_updated += stats.get("items_updated", 0)
+                logger.info(
+                    "Processed %s: %s items, %s new",
+                    source_config["name"],
+                    len(result),
+                    stats.get("items_added", 0),
+                )
+        
+        # Wait for slow scrapers to complete (running in parallel)
+        if slow_tasks:
+            logger.info("Waiting for slow scrapers to complete...")
+            slow_results = await asyncio.gather(*slow_tasks, return_exceptions=True)
+            
+            for source, result in zip(slow_scrapers, slow_results, strict=False):
+                if isinstance(result, Exception):
+                    logger.error("Scraper %s failed: %s", source["name"], result)
+                    continue
+                if result:
+                    items_processed += len(result)
+                    stats = await self._persist_items(result)
                     items_added += stats.get("items_added", 0)
                     items_with_thumbnails += stats.get("items_with_thumbnails", 0)
                     items_updated += stats.get("items_updated", 0)
-                    logger.info(f"Processed {source['name']}: {len(normalized)} items, {stats.get('items_added', 0)} new")
-            except Exception as e:
-                logger.error(f"Scraper {source['name']} failed: {e}")
-        return {"items_processed": items_processed, "items_added": items_added, "items_with_thumbnails": items_with_thumbnails, "items_updated": items_updated}
+                    logger.info(
+                        "Processed %s: %s items, %s new",
+                        source["name"],
+                        len(result),
+                        stats.get("items_added", 0),
+                    )
+        
+        return {
+            "items_processed": items_processed,
+            "items_added": items_added,
+            "items_with_thumbnails": items_with_thumbnails,
+            "items_updated": items_updated,
+        }
 
     async def _aggregate_rss_feeds(self) -> Dict[str, Any]:
         logger.info("Aggregating RSS feeds...")
@@ -241,91 +278,31 @@ class ContentAggregator:
         logger.info("Aggregating YouTube channels...")
         items_processed = items_added = items_with_thumbnails = items_updated = 0
 
-        for channel in self.youtube_channels:
-            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel['channel_id']}"
-            try:
-                response = await self._get(rss_url)
-            except Exception as exc:
-                logger.error("Error fetching YouTube channel %s: %s", channel["name"], exc)
-                continue
-            if response.status_code != 200:
-                logger.error(
-                    "Failed to fetch %s: HTTP %s",
-                    channel["name"],
-                    response.status_code,
-                )
-                continue
-
-            feed = feedparser.parse(response.text)
-            channel_items: List[Dict[str, Any]] = []
-            for entry in feed.entries[:10]:
-                video_id = getattr(entry, "yt_videoid", None)
-                if not video_id and hasattr(entry, "id") and isinstance(entry.id, str):
-                    parts = entry.id.split(":")
-                    if parts and parts[-1]:
-                        video_id = parts[-1]
-                duration_seconds: Optional[int] = None
-                if video_id:
-                    duration_seconds = await self._fetch_youtube_duration(video_id)
-                if duration_seconds is None:
-                    logger.debug(
-                        "Skipping YouTube video %s from %s due to unknown duration",
-                        video_id,
-                        channel["name"],
-                    )
+        # Process channels in parallel batches
+        batch_size = 4
+        for i in range(0, len(self.youtube_channels), batch_size):
+            batch = self.youtube_channels[i : i + batch_size]
+            tasks = [self._process_youtube_channel(channel) for channel in batch]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for channel_config, result in zip(batch, batch_results, strict=False):
+                if isinstance(result, Exception):
+                    logger.error("Error processing YouTube channel %s: %s", channel_config["name"], result)
                     continue
-                if duration_seconds < 180:
-                    logger.debug(
-                        "Skipping YouTube video %s from %s due to duration %s seconds",
-                        video_id,
-                        channel["name"],
-                        duration_seconds,
-                    )
+                if not result:
                     continue
-                thumb = None
-                thumbs = getattr(entry, "media_thumbnail", None) or getattr(entry, "media_thumbnails", None)
-                if thumbs and isinstance(thumbs, list) and thumbs[0].get("url"):
-                    thumb = thumbs[0]["url"]
-                if not thumb and video_id:
-                    thumb = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-
-                published_at = self._utcnow_naive()
-                if getattr(entry, "published_parsed", None):
-                    try:
-                        published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc).replace(tzinfo=None)
-                    except Exception:
-                        pass
-
-                channel_items.append(
-                    {
-                        "type": "youtube_video",
-                        "title": entry.get("title"),
-                        "url": entry.get("link"),
-                        "author": channel["name"],
-                        "published_at": published_at,
-                        "thumbnail_url": thumb,
-                        "meta_data": {
-                            "source_name": channel["name"],
-                            "category": channel["category"],
-                            "video_id": video_id,
-                            "channel_id": channel["channel_id"],
-                            "duration_seconds": duration_seconds,
-                            "extraction_method": "youtube_rss",
-                        },
-                    }
+                
+                items_processed += len(result)
+                stats = await self._persist_items(result)
+                items_added += stats.get("items_added", 0)
+                items_with_thumbnails += stats.get("items_with_thumbnails", 0)
+                items_updated += stats.get("items_updated", 0)
+                logger.info(
+                    "Processed YouTube channel %s: %s entries, %s new",
+                    channel_config["name"],
+                    len(result),
+                    stats.get("items_added", 0),
                 )
-
-            items_processed += len(channel_items)
-            stats = await self._persist_items(channel_items)
-            items_added += stats.get("items_added", 0)
-            items_with_thumbnails += stats.get("items_with_thumbnails", 0)
-            items_updated += stats.get("items_updated", 0)
-            logger.info(
-                "Processed YouTube channel %s: %s entries, %s new",
-                channel["name"],
-                len(channel_items),
-                stats.get("items_added", 0),
-            )
 
         return {
             "items_processed": items_processed,
@@ -333,6 +310,89 @@ class ContentAggregator:
             "items_with_thumbnails": items_with_thumbnails,
             "items_updated": items_updated,
         }
+
+    async def _process_youtube_channel(self, channel: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Process a single YouTube channel and return items."""
+        rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel['channel_id']}"
+        try:
+            response = await self._get(rss_url)
+        except Exception as exc:
+            logger.error("Error fetching YouTube channel %s: %s", channel["name"], exc)
+            return []
+        
+        if response.status_code != 200:
+            logger.error(
+                "Failed to fetch %s: HTTP %s",
+                channel["name"],
+                response.status_code,
+            )
+            return []
+
+        feed = feedparser.parse(response.text)
+        channel_items: List[Dict[str, Any]] = []
+        
+        for entry in feed.entries[:10]:
+            video_id = getattr(entry, "yt_videoid", None)
+            if not video_id and hasattr(entry, "id") and isinstance(entry.id, str):
+                parts = entry.id.split(":")
+                if parts and parts[-1]:
+                    video_id = parts[-1]
+            
+            duration_seconds: Optional[int] = None
+            if video_id:
+                duration_seconds = await self._fetch_youtube_duration(video_id)
+            
+            if duration_seconds is None:
+                logger.debug(
+                    "Skipping YouTube video %s from %s due to unknown duration",
+                    video_id,
+                    channel["name"],
+                )
+                continue
+            
+            if duration_seconds < 180:
+                logger.debug(
+                    "Skipping YouTube video %s from %s due to duration %s seconds",
+                    video_id,
+                    channel["name"],
+                    duration_seconds,
+                )
+                continue
+            
+            thumb = None
+            thumbs = getattr(entry, "media_thumbnail", None) or getattr(entry, "media_thumbnails", None)
+            if thumbs and isinstance(thumbs, list) and thumbs[0].get("url"):
+                thumb = thumbs[0]["url"]
+            if not thumb and video_id:
+                thumb = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+            published_at = self._utcnow_naive()
+            if getattr(entry, "published_parsed", None):
+                try:
+                    published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc).replace(tzinfo=None)
+                except Exception:
+                    pass
+
+            channel_items.append(
+                {
+                    "type": "youtube_video",
+                    "title": entry.get("title"),
+                    "url": entry.get("link"),
+                    "author": channel["name"],
+                    "published_at": published_at,
+                    "thumbnail_url": thumb,
+                    "meta_data": {
+                        "source_name": channel["name"],
+                        "category": channel["category"],
+                        "video_id": video_id,
+                        "channel_id": channel["channel_id"],
+                        "duration_seconds": duration_seconds,
+                        "extraction_method": "youtube_rss",
+                    },
+                }
+            )
+
+        return channel_items
 
     async def _fetch_youtube_duration(self, video_id: str) -> Optional[int]:
         if not video_id:
@@ -379,48 +439,60 @@ class ContentAggregator:
         logger.info("Aggregating Selenium/BeautifulSoup sources...")
         items_processed = items_added = items_with_thumbnails = items_updated = 0
 
-        for source in self.web_scraper_sources:
-            name = source["name"]
-            scrape: Callable[[], List[Dict[str, Any]]] = source["scrape_func"]
-            try:
-                raw_items = await asyncio.to_thread(scrape)
-            except Exception as exc:
-                logger.error("Error scraping %s: %s", name, exc)
-                continue
-
-            normalized: List[Dict[str, Any]] = []
-            for item in raw_items or []:
-                if not item or not item.get("title") or not item.get("url"):
+        # Separate slow scrapers (like Tavily AI agent) to run in parallel with batches
+        slow_scrapers = [s for s in self.web_scraper_sources if "Tavily" in s["name"]]
+        fast_scrapers = [s for s in self.web_scraper_sources if "Tavily" not in s["name"]]
+        
+        # Start slow scrapers as background tasks immediately (they run in parallel with everything)
+        slow_tasks = [self._process_web_scraper(source) for source in slow_scrapers]
+        
+        # Process fast scrapers in parallel batches
+        batch_size = 3  # Smaller batch for resource-intensive Selenium scrapers
+        for i in range(0, len(fast_scrapers), batch_size):
+            batch = fast_scrapers[i : i + batch_size]
+            tasks = [self._process_web_scraper(source) for source in batch]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for source_config, result in zip(batch, batch_results, strict=False):
+                if isinstance(result, Exception):
+                    logger.error("Error scraping %s: %s", source_config["name"], result)
                     continue
-                published_at = item.get("published_at") or self._utcnow_naive()
-                if isinstance(published_at, datetime):
-                    published_at = self._to_utc_naive(published_at)
-                normalized.append(
-                    {
-                        "type": item.get("type", "article"),
-                        "title": item.get("title"),
-                        "url": item.get("url"),
-                        "author": item.get("author"),
-                        "published_at": published_at,
-                        "thumbnail_url": item.get("thumbnail_url"),
-                        "meta_data": item.get("meta_data", {}),
-                    }
+                if not result:
+                    continue
+                
+                items_processed += len(result)
+                stats = await self._persist_items(result)
+                items_added += stats.get("items_added", 0)
+                items_with_thumbnails += stats.get("items_with_thumbnails", 0)
+                items_updated += stats.get("items_updated", 0)
+                logger.info(
+                    "Processed %s: %s items, %s new",
+                    source_config["name"],
+                    len(result),
+                    stats.get("items_added", 0),
                 )
-
-            if not normalized:
-                continue
-
-            items_processed += len(normalized)
-            stats = await self._persist_items(normalized)
-            items_added += stats.get("items_added", 0)
-            items_with_thumbnails += stats.get("items_with_thumbnails", 0)
-            items_updated += stats.get("items_updated", 0)
-            logger.info(
-                "Processed %s: %s items, %s new",
-                name,
-                len(normalized),
-                stats.get("items_added", 0),
-            )
+        
+        # Now wait for slow scrapers to complete (they've been running in parallel this whole time)
+        if slow_tasks:
+            logger.info("Waiting for slow scrapers to complete...")
+            slow_results = await asyncio.gather(*slow_tasks, return_exceptions=True)
+            
+            for source, result in zip(slow_scrapers, slow_results, strict=False):
+                if isinstance(result, Exception):
+                    logger.error("Error scraping %s: %s", source["name"], result)
+                    continue
+                if result:
+                    items_processed += len(result)
+                    stats = await self._persist_items(result)
+                    items_added += stats.get("items_added", 0)
+                    items_with_thumbnails += stats.get("items_with_thumbnails", 0)
+                    items_updated += stats.get("items_updated", 0)
+                    logger.info(
+                        "Processed %s: %s items, %s new",
+                        source["name"],
+                        len(result),
+                        stats.get("items_added", 0),
+                    )
 
         return {
             "items_processed": items_processed,
@@ -428,6 +500,38 @@ class ContentAggregator:
             "items_with_thumbnails": items_with_thumbnails,
             "items_updated": items_updated,
         }
+
+    async def _process_web_scraper(self, source: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Process a single web scraper and return normalized items."""
+        name = source["name"]
+        scrape: Callable[[], List[Dict[str, Any]]] = source["scrape_func"]
+        
+        try:
+            raw_items = await asyncio.to_thread(scrape)
+        except Exception as exc:
+            logger.error("Error scraping %s: %s", name, exc)
+            raise
+
+        normalized: List[Dict[str, Any]] = []
+        for item in raw_items or []:
+            if not item or not item.get("title") or not item.get("url"):
+                continue
+            published_at = item.get("published_at") or self._utcnow_naive()
+            if isinstance(published_at, datetime):
+                published_at = self._to_utc_naive(published_at)
+            normalized.append(
+                {
+                    "type": item.get("type", "article"),
+                    "title": item.get("title"),
+                    "url": item.get("url"),
+                    "author": item.get("author"),
+                    "published_at": published_at,
+                    "thumbnail_url": item.get("thumbnail_url"),
+                    "meta_data": item.get("meta_data", {}),
+                }
+            )
+
+        return normalized
 
     async def _process_rss_feed(self, feed_config: Dict[str, Any]) -> List[Dict[str, Any]]:
         headers: Dict[str, str] = {}
