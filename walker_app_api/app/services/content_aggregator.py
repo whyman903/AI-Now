@@ -13,6 +13,7 @@ import httpx
 from dateutil import parser as dateparser
 from sqlalchemy import or_
 
+from app.crud.analytics import AnalyticsCRUD
 from app.db.base import SessionLocal
 from app.db.models import ContentItem, FeedState
 from app.services.aggregation_sources import (
@@ -139,6 +140,10 @@ class ContentAggregator:
             results["total_new_items"],
             results["duration_seconds"],
         )
+        self._record_run_metrics(
+            summary=results,
+            context={"mode": "full"},
+        )
         return results
 
     async def aggregate_selective(self, rss: bool, youtube: bool, all_scrapers: bool, scrapers: Optional[List[str]]) -> Dict[str, Any]:
@@ -173,6 +178,16 @@ class ContentAggregator:
         end = self._utcnow_naive()
         results["completed_at"] = end.isoformat()
         results["duration_seconds"] = (end - start).total_seconds()
+        self._record_run_metrics(
+            summary=results,
+            context={
+                "mode": "selective",
+                "rss": rss,
+                "youtube": youtube,
+                "all_scrapers": all_scrapers,
+                "scrapers": scrapers or [],
+            },
+        )
         return results
     
     async def _run_scrapers_batch(self, scrapers: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -239,6 +254,25 @@ class ContentAggregator:
             "items_with_thumbnails": items_with_thumbnails,
             "items_updated": items_updated,
         }
+
+    def _record_run_metrics(self, summary: Dict[str, Any], context: Dict[str, Any]) -> None:
+        """Persist aggregation run metrics without interrupting callers."""
+
+        db = None
+        try:
+            db = SessionLocal()
+            AnalyticsCRUD.record_aggregation_run(db=db, summary=summary, context=context)
+        except Exception:
+            logger.exception(
+                "Failed to record aggregation run metrics for start=%s",
+                summary.get("started_at"),
+            )
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    pass
 
     async def _aggregate_rss_feeds(self) -> Dict[str, Any]:
         logger.info("Aggregating RSS feeds...")

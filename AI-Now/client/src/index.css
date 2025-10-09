@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --background: hsl(210, 20%, 98%);
+  --background: hsl(200, 100%, 97%);
   --foreground: hsl(220, 20%, 25%);
   --card: hsl(0, 0%, 100%);
   --card-foreground: hsl(220, 20%, 25%);
@@ -94,14 +94,11 @@
 /* Trending Papers Sidebar */
 .trending-paper-card {
   background-color: hsl(225, 70%, 95%);
-  border-color: hsl(225, 60%, 75%);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
   transform: scale(1);
-  transition: all 0.2s ease-in-out;
+  transition: all 0.3s ease-in-out;
 }
 
 .trending-paper-card:hover {
-  border-color: hsl(225, 80%, 60%);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15), 0 6px 12px rgba(0, 0, 0, 0.1);
   transform: scale(1.03);
 }
@@ -134,10 +131,10 @@
   color: hsl(225, 75%, 50%);
 }
 
-/* Article Cards - YouTube */
+/* Article Cards - YouTube #b4ddb6  */
 .article-card-youtube {
-  background-color: hsl(175, 45%, 94%);
-  border-color: hsl(175, 40%, 75%);
+  background-color: #dbf0dc; 
+  border-color: hsl(149, 40%, 75%);
   box-shadow: 0 2px 6px rgba(179, 179, 179, 0.15);
   transition: all 0.3s ease-in-out;
 }

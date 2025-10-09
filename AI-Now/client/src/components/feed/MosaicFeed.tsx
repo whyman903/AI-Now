@@ -152,12 +152,13 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
 
         {papers.length > 0 && (
           <aside ref={sidebarRef} className="col-span-1 lg:col-start-4 lg:col-span-1">
-            <div className="pb-2 mb-3">
-              <h2 className="text-lg font-bold">Trending Papers</h2>
+            <div className="pb-3 mb-4">
+              <h2 className="text-3xl font-bold text-blue-900 dark:text-gray-300">Trending Research</h2>
               {latestScrapeDate && (
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-blue-600/80 dark:text-blue-400/70 mt-1">
                   Updated {new Date(latestScrapeDate).toLocaleDateString()}
                 </p>
+                
               )}
             </div>
 
@@ -165,36 +166,36 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
               {papers.slice(0, 10).map((paper, idx) => (
                 <div
                   key={paper.id}
-                  className="trending-paper-card group cursor-pointer rounded-xl border p-3 h-24 overflow-hidden"
+                  className="trending-paper-card group cursor-pointer rounded-xl p-3 h-24 overflow-hidden bg-gradient-to-br from-blue-50 via-sky-50/50 to-background dark:bg-none dark:bg-blue-950/20 hover:shadow-[0_8px_20px_rgba(153,153,153,0.25)] transition-all duration-300 border-l-4 border-blue-500 dark:border-blue-700"
                   onClick={() => paper.sourceUrl && window.open(paper.sourceUrl, "_blank")}
                 >
                   <div className="flex items-start gap-3">
                     <div className="shrink-0 mt-0.5">
-                      <span className="trending-paper-rank-badge inline-flex items-center justify-center w-6 h-6 rounded-md text-white text-xs font-mono">
+                      <span className="text-2xl font-bold text-blue-600 dark:text-gray-300 font-mono">
                         {idx + 1}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className={`trending-paper-title font-serif ${paper.title.length > 100 ? "text-xs" : "text-sm"} font-semibold leading-snug line-clamp-2`}>
+                        <h3 className={`trending-paper-title font-serif ${paper.title.length > 100 ? "text-xs" : "text-sm"} font-semibold leading-snug line-clamp-2 text-blue-900 dark:text-gray-300`}>
                           {paper.title}
                         </h3>
                         {paper.metadata?.github_url && (
                           <button
                             type="button"
                             aria-label="Open associated GitHub repository"
-                            className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1"
+                            className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1 transition-colors bg-blue-200/60 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60"
                             onClick={(event) => {
                               event.stopPropagation();
                               window.open(paper.metadata?.github_url, "_blank", "noopener,noreferrer");
                             }}
                           >
-                            <Github className="h-4 w-4" />
+                            <Github className="h-4 w-4 text-blue-700 dark:text-gray-300" />
                           </button>
                         )}
                       </div>
                       {paper.author && (
-                        <p className="text-xs text-muted-foreground mt-1 truncate">By {paper.author}</p>
+                        <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mt-1 truncate">By {paper.author}</p>
                       )}
                     </div>
                   </div>
@@ -202,12 +203,12 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
               ))}
             </div>
 
-            <div className="mt-4 pt-4 border-t">
+            <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800/50">
               <a
                 href="https://huggingface.co/papers/trending"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="trending-papers-link text-sm hover:underline flex items-center gap-1"
+                className="trending-papers-link text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline flex items-center gap-1 transition-colors"
               >
                 View all papers
                 <ChevronRight className="h-3 w-3" />
@@ -243,10 +244,12 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
   const [hideImage, setHideImage] = useState(!hasThumbnail);
   const githubUrl = item.metadata?.github_url as string | undefined;
   const isAiTrends = item.metadata?.source_name === "Tavily AI Trends";
+  const [showYouTubePlayer, setShowYouTubePlayer] = useState(false);
+  const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const getCardStyleClasses = () => {
     if (isAiTrends) {
-      return "relative overflow-hidden border-2 border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/10 hover:border-primary/40 hover:shadow-lg";
+      return "relative overflow-hidden bg-gradient-to-br from-cyan-50 via-blue-50/50 to-background dark:from-emerald-950/30 dark:via-teal-950/20 dark:to-background hover:shadow-xl transition-all duration-300 border-l-4 border-cyan-500 dark:border-emerald-600";
     }
     switch (item.type) {
       case "youtube_video":
@@ -258,7 +261,7 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
 
   const getIcon = () => {
     if (isAiTrends) {
-      return <TrendingUp className="h-4 w-4 text-primary" />;
+      return <TrendingUp className="h-4 w-4 text-cyan-600 dark:text-gray-300" />;
     }
     if (item.metadata?.source_name === "Hugging Face Papers") {
       return <FlaskConical className="h-4 w-4" />;
@@ -286,6 +289,48 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
   };
 
   const isYouTube = item.type === "youtube_video";
+  
+  // Extract YouTube video ID from URL
+  const getYouTubeVideoId = (url: string): string | null => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
+      /youtube\.com\/embed\/([^&\n?#]+)/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const youtubeVideoId = isYouTube && item.sourceUrl ? getYouTubeVideoId(item.sourceUrl) : null;
+
+  // Handle hover for YouTube videos
+  const handleMouseEnter = () => {
+    if (isYouTube && youtubeVideoId) {
+      hoverTimerRef.current = setTimeout(() => {
+        setShowYouTubePlayer(true);
+      }, 1000);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setShowYouTubePlayer(false);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+
   const baseTitleClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
   let titleClamp = baseTitleClamp;
   
@@ -340,28 +385,37 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
       className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full overflow-hidden ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
-      {/* Decorative background for AI Trends */}
+      {/* Subtle accent for AI Trends */}
       {isAiTrends && (
-        <>
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-16 translate-x-16 pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl translate-y-16 -translate-x-16 pointer-events-none" />
-        </>
+        <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-400/20 dark:bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
       )}
 
       {!hideImage && (
         <div
           className="overflow-hidden rounded-xl w-full flex items-center justify-center relative"
           style={{ height: `${imageHeight}px`, zIndex: 1 }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
-          <img
-            src={item.thumbnailUrl ?? undefined}
-            alt={item.title}
-            loading="lazy"
-            decoding="async"
-            sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 100vw"
-            className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-300"
-            onError={() => setHideImage(true)}
-          />
+          {showYouTubePlayer && youtubeVideoId ? (
+            <iframe
+              src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&mute=1&controls=1&modestbranding=1&rel=0`}
+              title={item.title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              className="w-full h-full"
+              style={{ border: 'none' }}
+            />
+          ) : (
+            <img
+              src={item.thumbnailUrl ?? undefined}
+              alt={item.title}
+              loading="lazy"
+              decoding="async"
+              sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 100vw"
+              className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-300"
+              onError={() => setHideImage(true)}
+            />
+          )}
         </div>
       )}
 
@@ -397,26 +451,30 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
             </div>
           )}
 
-          <h3 className={`font-serif font-bold ${titleSize} ${titleMargin} leading-tight group-hover:text-primary transition-colors ${titleClamp}`}>
-            {isAiTrends ? "What's Happening?" : item.title}
+          <h3 className={`font-serif font-bold ${titleSize} ${titleMargin} leading-tight transition-colors ${titleClamp} ${
+            isAiTrends 
+              ? "text-cyan-900 dark:text-gray-300 group-hover:text-cyan-700 dark:group-hover:text-gray-300" 
+              : "group-hover:text-primary"
+          }`}>
+            {isAiTrends ? "What's Happening Now?" : item.title}
           </h3>
 
           {/* Only show summary for AI Trends digest */}
           {isAiTrends && item.metadata?.summary && (
-            <div className={`text-foreground ${summaryClamp} leading-relaxed prose max-w-none`}>
+            <div className={`text-foreground dark:text-gray-300 ${summaryClamp} leading-relaxed prose max-w-none`}>
               <ReactMarkdown
                 components={{
                   a: ({ node, ...props }) => (
                     <a
                       {...props}
-                      className="text-primary hover:text-primary/80 underline transition-colors"
+                      className="text-cyan-600 dark:text-gray-300 hover:text-cyan-700 dark:hover:text-gray-400 underline transition-colors"
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ),
                   ol: ({ node, ...props }) => (
-                    <ol {...props} className="space-y-4 list-decimal pl-6 marker:font-semibold marker:text-primary/70" />
+                    <ol {...props} className="space-y-4 list-decimal pl-6 marker:font-semibold marker:text-cyan-600 dark:marker:text-gray-300" />
                   ),
                   ul: ({ node, ...props }) => (
                     <ul {...props} className="space-y-2 list-disc pl-5" />
@@ -428,7 +486,7 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
                     <p {...props} className="text-base leading-relaxed" />
                   ),
                   strong: ({ node, ...props }) => (
-                    <strong {...props} className="font-semibold text-foreground" />
+                    <strong {...props} className="font-semibold text-cyan-900 dark:text-gray-300" />
                   ),
                 }}
               >
@@ -454,3 +512,4 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
     </div>
   );
 }
+
