@@ -115,6 +115,7 @@ export default function Home() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    isFetching,
   } = useInfiniteQuery({
     queryKey: [
       "content",
@@ -240,6 +241,8 @@ export default function Home() {
   useEffect(() => {
     latestResultsCount.current = filteredContent.length;
   }, [filteredContent.length]);
+
+  const isFiltering = isLoading || isFetching || isFetchingNextPage;
 
   // Auto-load more pages when searching to improve search results
   useEffect(() => {
@@ -393,7 +396,9 @@ export default function Home() {
               </div>
             )}
 
-            {!isLoading && filteredContent.length > 0 && <MosaicFeed items={filteredContent} />}
+            {!isLoading && filteredContent.length > 0 && (
+              <MosaicFeed items={filteredContent} isFiltering={isFiltering} />
+            )}
 
             {!isLoading && allContent.length > 0 && (
               <div className="flex items-center justify-center pt-4">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, RefCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,49 +26,147 @@ interface MosaicContentItem extends ContentItem {
 interface MosaicFeedProps {
   items: MosaicContentItem[];
   cardSize?: number;
+  isFiltering?: boolean;
 }
 
 const BASE_ROW_PX = 320;
 const BASE_IMAGE_HEIGHT = 160;
 const GRID_GAP_PX = 16;
+const MAX_ANALYTICS_STRING_LENGTH = 200;
+const MAX_ANALYTICS_ARRAY_LENGTH = 10;
+const METADATA_DENYLIST = new Set([
+  "summary",
+  "content",
+  "body",
+  "raw",
+  "raw_html",
+  "raw_text",
+  "chunks",
+  "source_documents",
+  "sections",
+]);
+
+function sanitizeAnalyticsMetadata(
+  metadata: Record<string, any> | null | undefined
+): Record<string, unknown> | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value == null || METADATA_DENYLIST.has(key)) {
+      continue;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        continue;
+      }
+      sanitized[key] =
+        trimmed.length > MAX_ANALYTICS_STRING_LENGTH
+          ? `${trimmed.slice(0, MAX_ANALYTICS_STRING_LENGTH)}…`
+          : trimmed;
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        continue;
+      }
+      sanitized[key] = value.slice(0, MAX_ANALYTICS_ARRAY_LENGTH);
+      continue;
+    }
+
+    if (typeof value === "object") {
+      // Nested objects can be large; skip them for analytics payloads.
+      continue;
+    }
+
+    sanitized[key] = value;
+  }
+
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+}
+
+const seenContentViews = new Set<string>();
 
 interface TrendingPaperCardProps {
   paper: MosaicContentItem;
   index: number;
+  isFiltering: boolean;
 }
 
-function TrendingPaperCard({ paper, index }: TrendingPaperCardProps) {
-  const handleView = useCallback(() => {
-    trackContentView(paper.id, {
-      position: index,
-      sourceName: paper.metadata?.source_name ?? undefined,
-      contentType: paper.type,
-      metadata: paper.metadata ?? undefined,
-    });
-  }, [index, paper.id, paper.metadata, paper.type]);
+interface TrendingPaperTrackingSnapshot {
+  id: string;
+  index: number;
+  type: string;
+  metadata: Record<string, any> | null | undefined;
+  sourceUrl: string | null | undefined;
+}
 
-  const registerViewRef = useViewTracking(handleView);
+const TrendingPaperCard = memo(function TrendingPaperCard({ paper, index, isFiltering }: TrendingPaperCardProps) {
+  const snapshotRef = useRef<TrendingPaperTrackingSnapshot>({
+    id: paper.id,
+    index,
+    type: paper.type,
+    metadata: paper.metadata,
+    sourceUrl: paper.sourceUrl,
+  });
 
-  const handleClick = useCallback(() => {
-    if (!paper.sourceUrl) return;
-    trackContentClick(paper.id, {
-      position: index,
-      sourceName: paper.metadata?.source_name ?? undefined,
-      contentType: paper.type,
-      metadata: paper.metadata ?? undefined,
-    });
-    window.open(paper.sourceUrl, "_blank");
+  useEffect(() => {
+    snapshotRef.current = {
+      id: paper.id,
+      index,
+      type: paper.type,
+      metadata: paper.metadata,
+      sourceUrl: paper.sourceUrl,
+    };
   }, [index, paper.id, paper.metadata, paper.sourceUrl, paper.type]);
 
-  const handleGithubClick = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      if (paper.metadata?.github_url) {
-        window.open(paper.metadata.github_url, "_blank", "noopener,noreferrer");
-      }
-    },
-    [paper.metadata]
-  );
+  const handleView = useCallback(() => {
+    const snapshot = snapshotRef.current;
+    if (seenContentViews.has(snapshot.id)) {
+      return;
+    }
+
+    seenContentViews.add(snapshot.id);
+    trackContentView(snapshot.id, {
+      position: snapshot.index,
+      sourceName: snapshot.metadata?.source_name ?? undefined,
+      contentType: snapshot.type,
+      metadata: sanitizeAnalyticsMetadata(snapshot.metadata),
+    });
+  }, []);
+
+  const registerViewRef = useViewTracking(handleView, { enabled: !isFiltering });
+
+  const handleClick = useCallback(() => {
+    const snapshot = snapshotRef.current;
+    if (!snapshot.sourceUrl) {
+      return;
+    }
+
+    trackContentClick(snapshot.id, {
+      position: snapshot.index,
+      sourceName: snapshot.metadata?.source_name ?? undefined,
+      contentType: snapshot.type,
+      metadata: sanitizeAnalyticsMetadata(snapshot.metadata),
+    });
+
+    window.open(snapshot.sourceUrl, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const handleGithubClick = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const snapshot = snapshotRef.current;
+    const githubUrl = snapshot.metadata?.github_url as string | undefined;
+    if (githubUrl) {
+      window.open(githubUrl, "_blank", "noopener,noreferrer");
+    }
+  }, []);
 
   return (
     <div
@@ -109,9 +207,9 @@ function TrendingPaperCard({ paper, index }: TrendingPaperCardProps) {
       </div>
     </div>
   );
-}
+});
 
-export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
+export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }: MosaicFeedProps) {
   if (!items || items.length === 0) {
     return <div className="text-center p-8">No items to display.</div>;
   }
@@ -206,6 +304,7 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
             imageHeight={cardHeight}
             variant={isFeatured ? "featured" : "default"}
             position={absoluteIndex}
+            isFiltering={isFiltering}
           />
         </div>
       );
@@ -247,7 +346,12 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
 
             <div className="space-y-3">
               {papers.slice(0, 10).map((paper, idx) => (
-                <TrendingPaperCard key={paper.id} paper={paper} index={idx} />
+                <TrendingPaperCard
+                  key={paper.id}
+                  paper={paper}
+                  index={idx}
+                  isFiltering={isFiltering}
+                />
               ))}
             </div>
 
@@ -286,24 +390,64 @@ interface ArticleCardProps {
   imageHeight: number;
   variant?: "default" | "featured";
   position?: number;
+  isFiltering: boolean;
 }
 
-function ArticleCard({ item, imageHeight, variant = "default", position }: ArticleCardProps) {
+interface ArticleTrackingSnapshot {
+  id: string;
+  position: number | undefined;
+  type: string;
+  metadata: Record<string, any> | null | undefined;
+  sourceUrl: string | null | undefined;
+}
+
+const ArticleCard = memo(function ArticleCard({
+  item,
+  imageHeight,
+  variant = "default",
+  position,
+  isFiltering,
+}: ArticleCardProps) {
   const hasThumbnail = !!item.thumbnailUrl;
   const [hideImage, setHideImage] = useState(!hasThumbnail);
   const githubUrl = item.metadata?.github_url as string | undefined;
   const isAiTrends = item.metadata?.source_name === "Tavily AI Trends";
   const [showYouTubePlayer, setShowYouTubePlayer] = useState(false);
   const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const handleView = useCallback(() => {
-    trackContentView(item.id, {
+  const trackingSnapshotRef = useRef<ArticleTrackingSnapshot>({
+    id: item.id,
+    position,
+    type: item.type,
+    metadata: item.metadata,
+    sourceUrl: item.sourceUrl,
+  });
+
+  useEffect(() => {
+    trackingSnapshotRef.current = {
+      id: item.id,
       position,
-      sourceName: item.metadata?.source_name ?? undefined,
-      contentType: item.type,
-      metadata: item.metadata ?? undefined,
+      type: item.type,
+      metadata: item.metadata,
+      sourceUrl: item.sourceUrl,
+    };
+  }, [item.id, item.metadata, item.sourceUrl, item.type, position]);
+
+  const handleView = useCallback(() => {
+    const snapshot = trackingSnapshotRef.current;
+    if (seenContentViews.has(snapshot.id)) {
+      return;
+    }
+
+    seenContentViews.add(snapshot.id);
+    trackContentView(snapshot.id, {
+      position: snapshot.position,
+      sourceName: snapshot.metadata?.source_name ?? undefined,
+      contentType: snapshot.type,
+      metadata: sanitizeAnalyticsMetadata(snapshot.metadata),
     });
-  }, [item.id, item.metadata, item.type, position]);
-  const registerViewRef = useViewTracking(handleView);
+  }, []);
+
+  const registerViewRef = useViewTracking(handleView, { enabled: !isFiltering });
 
   const getCardStyleClasses = () => {
     if (isAiTrends) {
@@ -340,17 +484,21 @@ function ArticleCard({ item, imageHeight, variant = "default", position }: Artic
     }
   };
 
-  const handleCardClick = () => {
-    if (item.sourceUrl) {
-      trackContentClick(item.id, {
-        position,
-        sourceName: item.metadata?.source_name ?? undefined,
-        contentType: item.type,
-        metadata: item.metadata ?? undefined,
-      });
-      window.open(item.sourceUrl, "_blank");
+  const handleCardClick = useCallback(() => {
+    const snapshot = trackingSnapshotRef.current;
+    if (!snapshot.sourceUrl) {
+      return;
     }
-  };
+
+    trackContentClick(snapshot.id, {
+      position: snapshot.position,
+      sourceName: snapshot.metadata?.source_name ?? undefined,
+      contentType: snapshot.type,
+      metadata: sanitizeAnalyticsMetadata(snapshot.metadata),
+    });
+
+    window.open(snapshot.sourceUrl, "_blank", "noopener,noreferrer");
+  }, []);
 
   const isYouTube = item.type === "youtube_video";
   
@@ -565,4 +713,4 @@ function ArticleCard({ item, imageHeight, variant = "default", position }: Artic
       </div>
     </div>
   );
-}
+});
