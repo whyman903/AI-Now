@@ -11,6 +11,7 @@ import {
   Github,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import ReactMarkdown from "react-markdown";
 import type { ContentItem } from "@shared/schema";
 
 interface MosaicContentItem extends ContentItem {
@@ -43,9 +44,27 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
     return !latest || scrapeDate > latest ? scrapeDate : latest;
   }, null);
 
+  // Get only the latest AI Trends summary
+  const aiTrendsSummaries = items.filter(
+    (item) => item.metadata?.source_name === "Tavily AI Trends"
+  );
+  const latestAiTrends = aiTrendsSummaries.length > 0
+    ? aiTrendsSummaries.reduce((latest, current) =>
+        (current.publishedAt ?? "") > (latest.publishedAt ?? "") ? current : latest
+      )
+    : null;
+
   const regularContent = items.filter(
     (item) => item.metadata?.source_name !== "Hugging Face Papers"
   );
+
+  // Remove old AI Trends summaries, keep only the latest
+  const contentWithLatestTrends = regularContent.filter(
+    (item) => item.metadata?.source_name !== "Tavily AI Trends"
+  );
+    const finalContent = latestAiTrends 
+    ? [latestAiTrends, ...contentWithLatestTrends]
+    : contentWithLatestTrends;
 
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const [sidebarRows, setSidebarRows] = useState<number>(0);
@@ -90,6 +109,25 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
     };
   }, [papers.length, rowPx]);
 
+  const renderGridItems = (content: MosaicContentItem[], startIndex: number) =>
+    content.map((item, index) => {
+      const absoluteIndex = startIndex + index;
+      const isAiTrendsTile = item.metadata?.source_name === "Tavily AI Trends";
+      const isFeatured = isLg && absoluteIndex === 0 && isAiTrendsTile;
+      const sizeClasses = isFeatured ? " lg:col-span-2 lg:row-span-2" : "";
+      const cardHeight = isFeatured ? imageHeight * 2 + GRID_GAP_PX : imageHeight;
+
+      return (
+        <div key={item.id} className={`col-span-1 row-span-1 h-full${sizeClasses}`}>
+          <ArticleCard
+            item={item}
+            imageHeight={cardHeight}
+            variant={isFeatured ? "featured" : "default"}
+          />
+        </div>
+      );
+    });
+
   return (
     <div className="p-2 sm:p-3 lg:p-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
@@ -107,23 +145,20 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 h-full"
               style={{ gridAutoRows: `${rowPx}px` }}
             >
-              {regularContent.slice(0, sidebarRows * 3).map((item) => (
-                <div key={item.id} className="col-span-1 row-span-1 h-full">
-                  <ArticleCard item={item} imageHeight={imageHeight} />
-                </div>
-              ))}
+              {renderGridItems(finalContent.slice(0, sidebarRows * 3), 0)}
             </div>
           </div>
         )}
 
         {papers.length > 0 && (
           <aside ref={sidebarRef} className="col-span-1 lg:col-start-4 lg:col-span-1">
-            <div className="pb-2 mb-3">
-              <h2 className="text-lg font-bold">Trending Papers</h2>
+            <div className="pb-3 mb-4">
+              <h2 className="text-2xl font-bold text-black dark:text-gray-300">Trending Research</h2>
               {latestScrapeDate && (
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   Updated {new Date(latestScrapeDate).toLocaleDateString()}
                 </p>
+                
               )}
             </div>
 
@@ -131,36 +166,36 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
               {papers.slice(0, 10).map((paper, idx) => (
                 <div
                   key={paper.id}
-                  className="trending-paper-card group cursor-pointer rounded-xl border p-3 h-24 overflow-hidden"
+                  className="trending-paper-card group cursor-pointer rounded-xl p-3 h-24 overflow-hidden bg-gradient-to-br from-blue-50 via-sky-50/50 to-background dark:bg-none dark:bg-blue-950/20 hover:shadow-[0_8px_20px_rgba(153,153,153,0.25)] transition-all duration-300 border-l-4 border-blue-500 dark:border-blue-700"
                   onClick={() => paper.sourceUrl && window.open(paper.sourceUrl, "_blank")}
                 >
                   <div className="flex items-start gap-3">
                     <div className="shrink-0 mt-0.5">
-                      <span className="trending-paper-rank-badge inline-flex items-center justify-center w-6 h-6 rounded-md text-white text-xs font-mono">
+                      <span className="text-2xl font-bold text-blue-600 dark:text-gray-300 font-mono">
                         {idx + 1}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className={`trending-paper-title font-serif ${paper.title.length > 100 ? "text-xs" : "text-sm"} font-semibold leading-snug line-clamp-2`}>
+                        <h3 className={`trending-paper-title font-serif ${paper.title.length > 100 ? "text-xs" : "text-sm"} font-semibold leading-snug line-clamp-2 text-blue-900 dark:text-gray-300`}>
                           {paper.title}
                         </h3>
                         {paper.metadata?.github_url && (
                           <button
                             type="button"
                             aria-label="Open associated GitHub repository"
-                            className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1"
+                            className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1 transition-colors bg-blue-200/60 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60"
                             onClick={(event) => {
                               event.stopPropagation();
                               window.open(paper.metadata?.github_url, "_blank", "noopener,noreferrer");
                             }}
                           >
-                            <Github className="h-4 w-4" />
+                            <Github className="h-4 w-4 text-blue-700 dark:text-gray-300" />
                           </button>
                         )}
                       </div>
                       {paper.author && (
-                        <p className="text-xs text-muted-foreground mt-1 truncate">By {paper.author}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">By {paper.author}</p>
                       )}
                     </div>
                   </div>
@@ -168,12 +203,12 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
               ))}
             </div>
 
-            <div className="mt-4 pt-4 border-t">
+            <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800/50">
               <a
                 href="https://huggingface.co/papers/trending"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="trending-papers-link text-sm hover:underline flex items-center gap-1"
+                className="trending-papers-link text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline flex items-center gap-1 transition-colors"
               >
                 View all papers
                 <ChevronRight className="h-3 w-3" />
@@ -187,11 +222,10 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
             style={{ gridAutoRows: `${rowPx}px` }}
           >
-            {(isLg ? regularContent.slice(sidebarRows * 3) : regularContent).map((item) => (
-              <div key={item.id} className="col-span-1 row-span-1 h-full">
-                <ArticleCard item={item} imageHeight={imageHeight} />
-              </div>
-            ))}
+            {renderGridItems(
+              isLg ? finalContent.slice(sidebarRows * 3) : finalContent,
+              isLg ? sidebarRows * 3 : 0
+            )}
           </div>
         </div>
       </div>
@@ -202,14 +236,21 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
 interface ArticleCardProps {
   item: MosaicContentItem;
   imageHeight: number;
+  variant?: "default" | "featured";
 }
 
-function ArticleCard({ item, imageHeight }: ArticleCardProps) {
+function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProps) {
   const hasThumbnail = !!item.thumbnailUrl;
   const [hideImage, setHideImage] = useState(!hasThumbnail);
   const githubUrl = item.metadata?.github_url as string | undefined;
+  const isAiTrends = item.metadata?.source_name === "Tavily AI Trends";
+  const [showYouTubePlayer, setShowYouTubePlayer] = useState(false);
+  const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const getCardStyleClasses = () => {
+    if (isAiTrends) {
+      return "article-card-ai-trends overflow-hidden";
+    }
     switch (item.type) {
       case "youtube_video":
         return "article-card-youtube";
@@ -219,6 +260,9 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
   };
 
   const getIcon = () => {
+    if (isAiTrends) {
+      return <TrendingUp className="h-4 w-4 text-slate-500 dark:text-gray-300" />;
+    }
     if (item.metadata?.source_name === "Hugging Face Papers") {
       return <FlaskConical className="h-4 w-4" />;
     }
@@ -245,124 +289,216 @@ function ArticleCard({ item, imageHeight }: ArticleCardProps) {
   };
 
   const isYouTube = item.type === "youtube_video";
-  let titleClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
-  const summaryClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
+  
+  // Extract YouTube video ID from URL
+  const getYouTubeVideoId = (url: string): string | null => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
+      /youtube\.com\/embed\/([^&\n?#]+)/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const youtubeVideoId = isYouTube && item.sourceUrl ? getYouTubeVideoId(item.sourceUrl) : null;
+
+  // Handle hover for YouTube videos
+  const handleMouseEnter = () => {
+    if (isYouTube && youtubeVideoId) {
+      hoverTimerRef.current = setTimeout(() => {
+        setShowYouTubePlayer(true);
+      }, 1000);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setShowYouTubePlayer(false);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+
+  const baseTitleClamp = hideImage ? "line-clamp-3" : "line-clamp-2";
+  let titleClamp = baseTitleClamp;
+  
+  // AI Trends should show full summary without truncation
+  let summaryClamp = hideImage
+    ? "line-clamp-3"
+    : variant === "featured"
+    ? "line-clamp-4"
+    : "line-clamp-2";
+  
+  if (isAiTrends) {
+    summaryClamp = ""; // Show full text for AI Trends (no clamp)
+    titleClamp = ""; // Don't clamp AI Trends title either
+  }
+  
   const titleLength = item.title.trim().length;
-  let titleSize = "text-lg";
+  let titleSize = isAiTrends ? "text-2xl" : "text-lg"; // Bigger title for AI Trends
 
   const longTitleRules = [
-    {
-      minLength: 200,
-      size: "text-xs",
-      clampWithImage: "line-clamp-5",
-      clampWithoutImage: "line-clamp-7",
-    },
-    {
-      minLength: 160,
-      size: "text-sm",
-      clampWithImage: "line-clamp-4",
-      clampWithoutImage: "line-clamp-6",
-    },
-    {
-      minLength: 100,
-      size: "text-base",
-      clampWithImage: "line-clamp-3",
-      clampWithoutImage: "line-clamp-5",
-    },
+    { minLength: 220, size: "text-xs" },
+    { minLength: 170, size: "text-sm" },
+    { minLength: 130, size: "text-base" },
   ];
 
-  for (const rule of longTitleRules) {
-    if (titleLength >= rule.minLength) {
-      titleSize = rule.size;
-      titleClamp = hideImage ? rule.clampWithoutImage : rule.clampWithImage;
-      break;
+  // Don't apply long title rules to AI Trends
+  if (!isAiTrends) {
+    for (const rule of longTitleRules) {
+      if (titleLength >= rule.minLength) {
+        titleSize = rule.size;
+        break;
+      }
+    }
+
+    if (titleLength >= 170 && hideImage) {
+      titleClamp = "line-clamp-2";
     }
   }
 
-  if (!hideImage && isYouTube) {
-    const clampMap: Record<string, string> = {
-      "line-clamp-2": "line-clamp-3",
-      "line-clamp-3": "line-clamp-4",
-      "line-clamp-4": "line-clamp-5",
-      "line-clamp-5": "line-clamp-6",
-    };
-    titleClamp = clampMap[titleClamp] ?? titleClamp;
+  const containerPadding = variant === "featured" ? "lg:p-6" : "";
+  const featuredTitleBoost = variant === "featured" && titleLength < 160 && !isAiTrends;
+  if (featuredTitleBoost) {
+    titleSize = "text-2xl";
+    if (!hideImage) {
+      titleClamp = "line-clamp-3";
+    }
   }
+
+  const titleMargin = titleLength >= 170 ? "mb-1" : titleLength >= 120 ? "mb-2" : "mb-3";
 
   return (
     <div
-      className={`group cursor-pointer flex flex-col p-4 rounded-2xl w-full h-full overflow-hidden ${getCardStyleClasses()}`}
+      className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
+      {/* Subtle accent for AI Trends */}
+      {isAiTrends && (
+        <div className="ai-trends-accent" />
+      )}
+
       {!hideImage && (
         <div
           className="overflow-hidden rounded-xl w-full flex items-center justify-center relative"
           style={{ height: `${imageHeight}px`, zIndex: 1 }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
-          <img
-            src={item.thumbnailUrl ?? undefined}
-            alt={item.title}
-            loading="lazy"
-            decoding="async"
-            sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 100vw"
-            className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-300"
-            onError={() => setHideImage(true)}
-          />
+          {showYouTubePlayer && youtubeVideoId ? (
+            <iframe
+              src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&mute=1&controls=1&modestbranding=1&rel=0`}
+              title={item.title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              className="w-full h-full"
+              style={{ border: 'none' }}
+            />
+          ) : (
+            <img
+              src={item.thumbnailUrl ?? undefined}
+              alt={item.title}
+              loading="lazy"
+              decoding="async"
+              sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 100vw"
+              className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-300"
+              onError={() => setHideImage(true)}
+            />
+          )}
         </div>
       )}
 
       <div className={`flex flex-col justify-start flex-grow overflow-hidden relative ${!hideImage ? "pt-3" : ""}`} style={{ zIndex: 1 }}>
         <div>
-          <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
-            <div className="flex items-center">
-              {getIcon()}
-              <span className="ml-2 capitalize">{item.type.replace("_", " ")}</span>
+          {!isAiTrends && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+              <div className="flex items-center">
+                {getIcon()}
+                <span className="ml-2 capitalize">{item.type.replace("_", " ")}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {githubUrl && (
+                  <button
+                    type="button"
+                    aria-label="Open associated GitHub repository"
+                    className="inline-flex items-center justify-center rounded-md border border-transparent bg-muted text-foreground hover:bg-muted/80 transition-colors p-1"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      window.open(githubUrl, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    <Github className="h-4 w-4" />
+                  </button>
+                )}
+                {item.metadata?.source_name === "Hugging Face Papers" && (
+                  <Badge variant="outline" className="text-xs px-2 py-0 h-5 flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3" />
+                    Trending
+                  </Badge>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {githubUrl && (
-                <button
-                  type="button"
-                  aria-label="Open associated GitHub repository"
-                  className="inline-flex items-center justify-center rounded-md border border-transparent bg-muted text-foreground hover:bg-muted/80 transition-colors p-1"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    window.open(githubUrl, "_blank", "noopener,noreferrer");
-                  }}
-                >
-                  <Github className="h-4 w-4" />
-                </button>
-              )}
-              {item.metadata?.source_name === "Hugging Face Papers" && (
-                <Badge variant="outline" className="text-xs px-2 py-0 h-5 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  Trending
-                </Badge>
-              )}
-            </div>
-          </div>
+          )}
 
-          <h3 className={`font-serif font-bold ${titleSize} mb-2 leading-tight group-hover:text-primary transition-colors ${titleClamp}`}>
-            {item.title}
+          <h3 className={`font-serif font-bold ${titleSize} ${titleMargin} leading-tight transition-colors ${titleClamp} ${
+            isAiTrends 
+              ? "text-black dark:text-gray-300 group-hover:text-black dark:group-hover:text-gray-300" 
+              : "group-hover:text-primary"
+          }`}>
+            {isAiTrends ? "What's Happening Now?" : item.title}
           </h3>
 
-          {item.aiSummary && (
-            <p className={`text-muted-foreground text-base ${summaryClamp} mb-3 leading-snug`}>
-              {item.aiSummary}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between text-sm text-muted-foreground mt-auto pt-2">
-          <div className="font-medium truncate">{item.author || "Unknown"}</div>
-          {item.publishedAt && (
-            <div className="shrink-0 ml-2">
-              {formatDistanceToNow(new Date(item.publishedAt), {
-                addSuffix: true,
-              })}
+          {/* Only show summary for AI Trends digest */}
+          {isAiTrends && item.metadata?.summary && (
+            <div className={`ai-trends-prose ${summaryClamp} leading-relaxed`}>
+              <ReactMarkdown
+                components={{
+                  a: ({ node, ...props }) => (
+                    <a
+                      {...props}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ),
+                  ol: ({ node, ...props }) => <ol {...props} />,
+                  ul: ({ node, ...props }) => <ul {...props} />,
+                  li: ({ node, ...props }) => <li {...props} />,
+                  p: ({ node, ...props }) => <p {...props} />,
+                  strong: ({ node, ...props }) => <strong {...props} />,
+                }}
+              >
+                {item.metadata.summary.replace(/\\n/g, '\n')}
+              </ReactMarkdown>
             </div>
           )}
         </div>
+
+        {!isAiTrends && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground mt-auto pt-2 min-h-[2.25rem]">
+            <div className="font-medium truncate">{item.author || "Unknown"}</div>
+            {item.publishedAt && (
+              <div className="shrink-0 ml-2">
+                {formatDistanceToNow(new Date(item.publishedAt), {
+                  addSuffix: true,
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+

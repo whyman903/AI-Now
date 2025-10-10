@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # CORS settings
     CORS_ORIGINS: str = "http://localhost:5173,https://ai-now.vercel.app,http://localhost:5174,http://localhost:5000,http://localhost:3000"
     
+    XAI_API_KEY: Optional[str] = None
+    TAVILY_API_KEY: Optional[str] = None
+    
     # HTTP client settings
     HTTP_CLIENT_TIMEOUT: float = 30.0
     HTTP_CLIENT_USER_AGENT: str = "Mozilla/5.0 (compatible; ContentAggregator/1.0)"

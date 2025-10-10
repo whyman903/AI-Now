@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import MosaicFeed from "@/components/feed/MosaicFeed";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { LabSidebar } from "@/components/layout/LabSidebar";
 import { AppLogo } from "@/components/branding/AppLogo";
-import { Plus } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 interface LabFilter {
   id: string;
@@ -25,6 +26,7 @@ export default function Home() {
   const [selectedLabs, setSelectedLabs] = useState<LabFilter[]>([]);
   const [selectedContentTypes, setSelectedContentTypes] = useState<ContentTypeFilter[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [keywordFilter, setKeywordFilter] = useState("");
 
   const labsQuery = useQuery({
     queryKey: ["lab_filters"],
@@ -56,7 +58,7 @@ export default function Home() {
     [selectedContentTypes]
   );
 
-  const hasActiveFilters = selectedLabs.length > 0 || selectedContentTypes.length > 0;
+  const hasActiveFilters = selectedLabs.length > 0 || selectedContentTypes.length > 0 || keywordFilter.trim() !== "";
 
   const activeFilterSummary = useMemo(() => {
     const parts: string[] = [];
@@ -66,12 +68,16 @@ export default function Home() {
     if (selectedContentTypes.length) {
       parts.push(`types: ${selectedContentTypes.map((type) => type.label).join(", ")}`);
     }
+    if (keywordFilter.trim()) {
+      parts.push(`search: "${keywordFilter}"`);
+    }
     return parts.join(" • ");
-  }, [selectedLabs, selectedContentTypes]);
+  }, [selectedLabs, selectedContentTypes, keywordFilter]);
 
   const clearAllFilters = () => {
     setSelectedLabs([]);
     setSelectedContentTypes([]);
+    setKeywordFilter("");
   };
 
   const toggleLab = (lab: LabFilter) => {
@@ -105,9 +111,11 @@ export default function Home() {
       "content",
       selectedAuthors.length ? [...selectedAuthors].sort().join("|") : "",
       selectedTypeValues.length ? [...selectedTypeValues].sort().join("|") : "",
+      keywordFilter.trim(), // Include search term in query key
     ],
     queryFn: async ({ pageParam = 0 }) => {
-      const LIMIT = 48;
+      // When searching, load the maximum allowed batch (100 items) to improve search results
+      const LIMIT = keywordFilter.trim() ? 100 : 48;
       const params = new URLSearchParams({
         limit: LIMIT.toString(),
         offset: (pageParam * LIMIT).toString(),
@@ -176,6 +184,60 @@ export default function Home() {
     return merged;
   }, [papersData, allContent]);
 
+  const filteredContent = useMemo(() => {
+    if (!keywordFilter.trim()) {
+      return combined;
+    }
+    
+    const keyword = keywordFilter.trim().toLowerCase();
+    return combined.filter((item) => {
+      // Search in title
+      if (item?.title?.toLowerCase().includes(keyword)) {
+        return true;
+      }
+      
+      // Search in author/organization
+      if (item?.author?.toLowerCase().includes(keyword)) {
+        return true;
+      }
+      
+      // Search in date (formatted as readable string)
+      if (item?.publishedAt) {
+        try {
+          const date = new Date(item.publishedAt);
+          // Format date in multiple ways for flexible searching
+          const dateStrings = [
+            date.toLocaleDateString(), // e.g., "1/15/2024"
+            date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), // e.g., "January 15, 2024"
+            date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), // e.g., "Jan 15, 2024"
+            date.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }), // e.g., "01/15/2024"
+            date.getFullYear().toString(), // e.g., "2024"
+            date.toLocaleDateString('en-US', { month: 'long' }), // e.g., "January"
+            date.toLocaleDateString('en-US', { month: 'short' }), // e.g., "Jan"
+          ];
+          
+          if (dateStrings.some(dateStr => dateStr.toLowerCase().includes(keyword))) {
+            return true;
+          }
+        } catch (e) {
+          // Invalid date, skip date search
+        }
+      }
+      
+      return false;
+    });
+  }, [combined, keywordFilter]);
+
+  // Auto-load more pages when searching to improve search results
+  useEffect(() => {
+    if (keywordFilter.trim() && hasNextPage && !isFetchingNextPage && !isLoading) {
+      // If we have very few filtered results and more pages are available, auto-load
+      if (filteredContent.length < 20) {
+        fetchNextPage();
+      }
+    }
+  }, [keywordFilter, filteredContent.length, hasNextPage, isFetchingNextPage, isLoading, fetchNextPage]);
+
   const labs = labsQuery.data?.labs ?? [];
 
   return (
@@ -186,7 +248,26 @@ export default function Home() {
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
               <span className="block" aria-hidden="true" />
               <AppLogo />
-              <div className="justify-self-end">
+              <div className="justify-self-end flex items-center gap-3">
+                <div className="relative group">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none z-10" />
+                  <Input
+                    type="text"
+                    placeholder="Search by title, org, or date..."
+                    value={keywordFilter}
+                    onChange={(e) => setKeywordFilter(e.target.value)}
+                    className="pl-9 pr-8 h-9 bg-transparent border-transparent group-hover:bg-background group-hover:border-border group-focus-within:bg-background group-focus-within:border-border transition-all duration-300 ease-in-out w-10 group-hover:w-64 group-focus-within:w-64"
+                  />
+                  {keywordFilter && (
+                    <button
+                      onClick={() => setKeywordFilter("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full hover:bg-muted flex items-center justify-center transition-colors z-10"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-3 w-3 text-foreground" />
+                    </button>
+                  )}
+                </div>
                 <ThemeToggle />
               </div>
             </div>
@@ -224,7 +305,7 @@ export default function Home() {
               </div>
             )}
 
-            {!isLoading && combined.length === 0 && (
+            {!isLoading && filteredContent.length === 0 && combined.length === 0 && (
               <div className="text-center py-20">
                 <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
                   <Plus className="h-8 w-8 text-muted-foreground" />
@@ -236,7 +317,19 @@ export default function Home() {
               </div>
             )}
 
-            {!isLoading && combined.length > 0 && <MosaicFeed items={combined} />}
+            {!isLoading && filteredContent.length === 0 && combined.length > 0 && (
+              <div className="text-center py-20">
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Plus className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-medium text-foreground mb-2">No results found</h3>
+                <p className="text-muted-foreground mb-4">
+                  No items match your search "{keywordFilter}".
+                </p>
+              </div>
+            )}
+
+            {!isLoading && filteredContent.length > 0 && <MosaicFeed items={filteredContent} />}
 
             {!isLoading && allContent.length > 0 && (
               <div className="flex items-center justify-center pt-4">

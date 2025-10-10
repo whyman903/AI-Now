@@ -3,25 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --background: hsl(210, 20%, 98%);
-  --foreground: hsl(220, 20%, 25%);
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(240, 10%, 3.9%);
   --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(220, 20%, 25%);
+  --card-foreground: hsl(240, 10%, 3.9%);
   --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(220, 20%, 25%);
-  --primary: hsl(220, 25%, 30%);
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(210, 20%, 92%);
-  --secondary-foreground: hsl(220, 20%, 30%);
-  --muted: hsl(210, 15%, 90%);
-  --muted-foreground: hsl(220, 10%, 50%);
-  --accent: hsl(210, 80%, 55%);
-  --accent-foreground: hsl(0, 0%, 100%);
-  --destructive: hsl(0, 75%, 55%);
+  --popover-foreground: hsl(240, 10%, 3.9%);
+  --primary: hsl(240, 5.9%, 10%);
+  --primary-foreground: hsl(0, 0%, 98%);
+  --secondary: hsl(240, 4.8%, 95.9%);
+  --secondary-foreground: hsl(240, 5.9%, 10%);
+  --muted: hsl(240, 4.8%, 95.9%);
+  --muted-foreground: hsl(240, 3.8%, 46.1%);
+  --accent: hsl(240, 4.8%, 95.9%);
+  --accent-foreground: hsl(240, 5.9%, 10%);
+  --destructive: hsl(0, 84.2%, 60.2%);
   --destructive-foreground: hsl(0, 0%, 98%);
-  --border: hsl(210, 15%, 88%);
-  --input: hsl(210, 15%, 88%);
-  --ring: hsl(210, 80%, 55%);
+  --border: hsl(240, 5.9%, 90%);
+  --input: hsl(240, 5.9%, 90%);
+  --ring: hsl(240, 5.9%, 10%);
   --radius: 0.75rem;
 }
 
@@ -80,6 +80,13 @@
   overflow: hidden;
 }
 
+.line-clamp-4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .line-clamp-6 {
   display: -webkit-box;
   -webkit-line-clamp: 6;
@@ -93,58 +100,56 @@
 
 /* Trending Papers Sidebar */
 .trending-paper-card {
-  background-color: hsl(225, 70%, 95%);
-  border-color: hsl(225, 60%, 75%);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  background-color: hsl(240, 4.8%, 95.9%);
   transform: scale(1);
-  transition: all 0.2s ease-in-out;
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+  will-change: transform;
 }
 
 .trending-paper-card:hover {
-  border-color: hsl(225, 80%, 60%);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15), 0 6px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08), 0 6px 12px rgba(0, 0, 0, 0.05);
   transform: scale(1.03);
 }
 
 .trending-paper-rank-badge {
-  background-color: hsl(225, 75%, 55%);
-  box-shadow: 0 2px 4px rgba(128, 128, 128, 0.2);
+  background-color: hsl(240, 5.9%, 10%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .trending-paper-title {
-  color: hsl(225, 60%, 25%);
+  color: hsl(240, 10%, 3.9%);
   transition: color 0.2s ease-in-out;
 }
 
 .trending-paper-title:hover {
-  color: hsl(225, 80%, 45%);
+  color: hsl(240, 5.9%, 10%);
 }
 
 .trending-paper-github-btn {
-  background-color: hsl(225, 70%, 90%);
-  color: hsl(225, 75%, 50%);
+  background-color: hsl(240, 5.9%, 90%);
+  color: hsl(240, 5.9%, 10%);
   transition: background-color 0.2s ease-in-out;
 }
 
 .trending-paper-github-btn:hover {
-  background-color: hsl(225, 70%, 85%);
+  background-color: hsl(240, 5.9%, 85%);
 }
 
 .trending-papers-link {
-  color: hsl(225, 75%, 50%);
+  color: hsl(240, 5.9%, 10%);
 }
 
 /* Article Cards - YouTube */
 .article-card-youtube {
-  background-color: hsl(175, 45%, 94%);
-  border-color: hsl(175, 40%, 75%);
-  box-shadow: 0 2px 6px rgba(179, 179, 179, 0.15);
+  background-color: hsl(120, 40%, 92%);
+  border-color: hsl(120, 40%, 85%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease-in-out;
 }
 
 .article-card-youtube:hover {
-  border-color: hsl(175, 50%, 55%);
-  box-shadow: 0 8px 20px rgba(153, 153, 153, 0.25);
+  border-color: hsl(120, 40%, 78%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
 .dark .article-card-youtube {
@@ -168,4 +173,116 @@
 .dark .article-card-default {
   background-color: hsl(220, 35%, 18%);
   border-color: hsl(220, 30%, 26%);
+}
+
+/* Article Cards - AI Trends */
+.article-card-ai-trends {
+  background: linear-gradient(to bottom right, hsl(215, 16%, 94%), hsl(210, 20%, 94%) / 0.5, hsl(0, 0%, 100%));
+  border-left: 4px solid hsl(215, 25%, 75%);
+  transition: all 0.3s ease-in-out;
+  position: relative;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.article-card-ai-trends:hover {
+  /* No shadow on hover */
+}
+
+.dark .article-card-ai-trends {
+  background: linear-gradient(to bottom right, hsl(215, 28%, 17%) / 0.3, hsl(217, 19%, 27%) / 0.2, hsl(220, 20%, 12%));
+  border-left-color: hsl(215, 27%, 42%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* AI Trends accent glow */
+.ai-trends-accent {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8rem;
+  height: 8rem;
+  background: hsl(188, 95%, 60%) / 0.25;
+  border-radius: 9999px;
+  filter: blur(3rem);
+  pointer-events: none;
+}
+
+.dark .ai-trends-accent {
+  background: hsl(160, 60%, 45%) / 0.15;
+}
+
+/* ReactMarkdown prose styles for AI Trends */
+.ai-trends-prose {
+  max-width: none;
+}
+
+.ai-trends-prose a {
+  color: hsl(188, 85%, 40%);
+  text-decoration: underline;
+  transition: color 0.2s ease-in-out;
+}
+
+.ai-trends-prose a:hover {
+  color: hsl(188, 85%, 35%);
+}
+
+.dark .ai-trends-prose a {
+  color: hsl(210, 15%, 92%);
+}
+
+.dark .ai-trends-prose a:hover {
+  color: hsl(210, 15%, 75%);
+}
+
+.ai-trends-prose ol {
+  list-style-type: disc;
+  padding-left: 2.5rem;
+  margin: 0;
+}
+
+.ai-trends-prose ol > li {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  margin: 0;
+  padding-left: 0.5rem;
+}
+
+.ai-trends-prose ol > li::marker {
+  color: hsl(240, 10%, 3.9%);
+}
+
+.dark .ai-trends-prose ol > li::marker {
+  color: hsl(210, 15%, 92%);
+}
+
+.ai-trends-prose ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  color: hsl(240, 10%, 3.9%);
+}
+
+.dark .ai-trends-prose ul {
+  color: hsl(210, 15%, 92%);
+}
+
+.ai-trends-prose li {
+  color: hsl(240, 10%, 3.9%);
+}
+
+.dark .ai-trends-prose li {
+  color: hsl(210, 15%, 92%);
+}
+
+.ai-trends-prose p {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+
+.ai-trends-prose strong {
+  font-weight: 600;
+  color: hsl(240, 10%, 3.9%);
+}
+
+.dark .ai-trends-prose strong {
+  color: hsl(210, 15%, 92%);
 }
