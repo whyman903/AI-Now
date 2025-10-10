@@ -33,7 +33,29 @@ function sendAnalytics(endpoint: AnalyticsEndpointKey, payload: Payload) {
       },
       body,
       keepalive: true,
-    }).catch(() => undefined);
+    })
+      .then((response) => {
+        if (!response.ok) {
+          response
+            .json()
+            .catch(() => ({}))
+            .then((errorBody) => {
+              console.error("Analytics request failed", {
+                endpoint,
+                status: response.status,
+                body: errorBody,
+                payload,
+              });
+            });
+        }
+      })
+      .catch((error) => {
+        console.error("Analytics request error", {
+          endpoint,
+          error,
+          payload,
+        });
+      });
   }
 }
 

@@ -194,49 +194,39 @@ export default function Home() {
     return merged;
   }, [papersData, allContent]);
 
+  const searchableContent = useMemo(
+    () =>
+      combined.map((item) => {
+        const fields: string[] = [];
+        if (typeof item?.title === "string") {
+          fields.push(item.title.toLowerCase());
+        }
+        if (typeof item?.author === "string") {
+          fields.push(item.author.toLowerCase());
+        }
+        if (typeof item?.metadata?.source_name === "string") {
+          fields.push(item.metadata.source_name.toLowerCase());
+        }
+
+        return {
+          item,
+          haystack: fields.join(" "),
+        };
+      }),
+    [combined]
+  );
+
   const filteredContent = useMemo(() => {
-    if (!keywordFilter.trim()) {
+    const trimmed = keywordFilter.trim();
+    if (!trimmed) {
       return combined;
     }
-    
-    const keyword = keywordFilter.trim().toLowerCase();
-    return combined.filter((item) => {
-      // Search in title
-      if (item?.title?.toLowerCase().includes(keyword)) {
-        return true;
-      }
-      
-      // Search in author/organization
-      if (item?.author?.toLowerCase().includes(keyword)) {
-        return true;
-      }
-      
-      // Search in date (formatted as readable string)
-      if (item?.publishedAt) {
-        try {
-          const date = new Date(item.publishedAt);
-          // Format date in multiple ways for flexible searching
-          const dateStrings = [
-            date.toLocaleDateString(), // e.g., "1/15/2024"
-            date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }), // e.g., "January 15, 2024"
-            date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), // e.g., "Jan 15, 2024"
-            date.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }), // e.g., "01/15/2024"
-            date.getFullYear().toString(), // e.g., "2024"
-            date.toLocaleDateString('en-US', { month: 'long' }), // e.g., "January"
-            date.toLocaleDateString('en-US', { month: 'short' }), // e.g., "Jan"
-          ];
-          
-          if (dateStrings.some(dateStr => dateStr.toLowerCase().includes(keyword))) {
-            return true;
-          }
-        } catch (e) {
-          // Invalid date, skip date search
-        }
-      }
-      
-      return false;
-    });
-  }, [combined, keywordFilter]);
+
+    const keyword = trimmed.toLowerCase();
+    return searchableContent
+      .filter(({ haystack }) => haystack.includes(keyword))
+      .map(({ item }) => item);
+  }, [keywordFilter, searchableContent]);
 
   useEffect(() => {
     latestResultsCount.current = filteredContent.length;
@@ -320,7 +310,7 @@ export default function Home() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none z-10" />
                   <Input
                     type="text"
-                    placeholder="Search by title, org, or date..."
+                    placeholder="Search by title or org..."
                     value={keywordFilter}
                     onChange={(e) => setKeywordFilter(e.target.value)}
                     className="pl-9 pr-8 h-9 bg-transparent border-transparent group-hover:bg-background group-hover:border-border group-focus-within:bg-background group-focus-within:border-border transition-all duration-300 ease-in-out w-10 group-hover:w-64 group-focus-within:w-64"

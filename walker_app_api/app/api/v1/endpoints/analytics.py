@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -11,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.crud.analytics import AnalyticsCRUD
 from app.db.base import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -99,6 +102,11 @@ async def track_interaction(
             "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else None,
         }
     except SQLAlchemyError as exc:
+        logger.exception("Failed to track interaction", extra={
+            "content_id": payload.content_id,
+            "interaction_type": payload.interaction_type,
+            "session_id": payload.session_id,
+        })
         raise HTTPException(status_code=500, detail="Unable to track interaction.") from exc
 
 

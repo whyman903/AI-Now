@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, RefCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -93,6 +93,17 @@ function sanitizeAnalyticsMetadata(
 
 const seenContentViews = new Set<string>();
 
+const LONG_TITLE_RULES = [
+  { minLength: 220, size: "text-xs" },
+  { minLength: 170, size: "text-sm" },
+  { minLength: 130, size: "text-base" },
+] as const;
+
+const YOUTUBE_URL_PATTERNS = [
+  /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
+  /youtube\.com\/embed\/([^&\n?#]+)/,
+] as const;
+
 interface TrendingPaperCardProps {
   paper: MosaicContentItem;
   index: number;
@@ -105,6 +116,53 @@ interface TrendingPaperTrackingSnapshot {
   type: string;
   metadata: Record<string, any> | null | undefined;
   sourceUrl: string | null | undefined;
+}
+
+function extractYouTubeVideoId(url: string): string | null {
+  for (const pattern of YOUTUBE_URL_PATTERNS) {
+    const match = url.match(pattern);
+    if (match) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+function getCardStyleClasses(isAiTrends: boolean, type: string): string {
+  if (isAiTrends) {
+    return "article-card-ai-trends overflow-hidden";
+  }
+
+  switch (type) {
+    case "youtube_video":
+      return "article-card-youtube";
+    default:
+      return "article-card-default";
+  }
+}
+
+function renderItemIcon(item: MosaicContentItem, isAiTrends: boolean): JSX.Element {
+  if (isAiTrends) {
+    return <TrendingUp className="h-4 w-4 text-slate-500 dark:text-gray-300" />;
+  }
+
+  if (item.metadata?.source_name === "Hugging Face Papers") {
+    return <FlaskConical className="h-4 w-4" />;
+  }
+
+  switch (item.type) {
+    case "youtube_video":
+      return <PlaySquare className="h-4 w-4" />;
+    case "podcast":
+      return <Mic className="h-4 w-4" />;
+    case "research_paper":
+    case "academic":
+      return <FileText className="h-4 w-4" />;
+    case "twitter_post":
+      return <X className="h-4 w-4" />;
+    default:
+      return <FileText className="h-4 w-4" />;
+  }
 }
 
 const TrendingPaperCard = memo(function TrendingPaperCard({ paper, index, isFiltering }: TrendingPaperCardProps) {
@@ -214,37 +272,58 @@ export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }:
     return <div className="text-center p-8">No items to display.</div>;
   }
 
-  const papers = items
-    .filter((item) => item.metadata?.source_name === "Hugging Face Papers")
-    .sort((a, b) => (a.metadata?.rank ?? 999) - (b.metadata?.rank ?? 999));
+  const { papers, latestScrapeDate, finalContent } = useMemo(() => {
+    const huggingFacePapers: MosaicContentItem[] = [];
+    const regularContent: MosaicContentItem[] = [];
+    const aiTrendsSummaries: MosaicContentItem[] = [];
 
-  const latestScrapeDate: string | null = papers.reduce<string | null>((latest, paper) => {
-    const scrapeDate = paper.metadata?.scraped_date;
-    if (!scrapeDate) return latest;
-    return !latest || scrapeDate > latest ? scrapeDate : latest;
-  }, null);
+    for (const item of items) {
+      const sourceName = item.metadata?.source_name;
+      if (sourceName === "Hugging Face Papers") {
+        huggingFacePapers.push(item);
+        continue;
+      }
 
-  // Get only the latest AI Trends summary
-  const aiTrendsSummaries = items.filter(
-    (item) => item.metadata?.source_name === "Tavily AI Trends"
-  );
-  const latestAiTrends = aiTrendsSummaries.length > 0
-    ? aiTrendsSummaries.reduce((latest, current) =>
-        (current.publishedAt ?? "") > (latest.publishedAt ?? "") ? current : latest
-      )
-    : null;
+      if (sourceName === "Tavily AI Trends") {
+        aiTrendsSummaries.push(item);
+        continue;
+      }
 
-  const regularContent = items.filter(
-    (item) => item.metadata?.source_name !== "Hugging Face Papers"
-  );
+      regularContent.push(item);
+    }
 
-  // Remove old AI Trends summaries, keep only the latest
-  const contentWithLatestTrends = regularContent.filter(
-    (item) => item.metadata?.source_name !== "Tavily AI Trends"
-  );
-  const finalContent = latestAiTrends
-    ? [latestAiTrends, ...contentWithLatestTrends]
-    : contentWithLatestTrends;
+    const sortedPapers = [...huggingFacePapers].sort(
+      (a, b) => (a.metadata?.rank ?? 999) - (b.metadata?.rank ?? 999)
+    );
+
+    const derivedLatestScrapeDate = sortedPapers.reduce<string | null>((latest, paper) => {
+      const scrapeDate = paper.metadata?.scraped_date;
+      if (!scrapeDate) return latest;
+      return !latest || scrapeDate > latest ? scrapeDate : latest;
+    }, null);
+
+    let latestAiTrends: MosaicContentItem | null = null;
+    let latestAiTrendsTimestamp = Number.NEGATIVE_INFINITY;
+
+    for (const summary of aiTrendsSummaries) {
+      const publishedAt = summary.publishedAt ? new Date(summary.publishedAt).getTime() : NaN;
+      const parsed = Number.isNaN(publishedAt) ? Number.NEGATIVE_INFINITY : publishedAt;
+      if (parsed > latestAiTrendsTimestamp) {
+        latestAiTrends = summary;
+        latestAiTrendsTimestamp = parsed;
+      }
+    }
+
+    const combinedContent = latestAiTrends
+      ? [latestAiTrends, ...regularContent]
+      : [...regularContent];
+
+    return {
+      papers: sortedPapers,
+      latestScrapeDate: derivedLatestScrapeDate,
+      finalContent: combinedContent,
+    };
+  }, [items]);
 
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const [sidebarRows, setSidebarRows] = useState<number>(0);
@@ -448,41 +527,8 @@ const ArticleCard = memo(function ArticleCard({
   }, []);
 
   const registerViewRef = useViewTracking(handleView, { enabled: !isFiltering });
-
-  const getCardStyleClasses = () => {
-    if (isAiTrends) {
-      return "article-card-ai-trends overflow-hidden";
-    }
-    switch (item.type) {
-      case "youtube_video":
-        return "article-card-youtube";
-      default:
-        return "article-card-default";
-    }
-  };
-
-  const getIcon = () => {
-    if (isAiTrends) {
-      return <TrendingUp className="h-4 w-4 text-slate-500 dark:text-gray-300" />;
-    }
-    if (item.metadata?.source_name === "Hugging Face Papers") {
-      return <FlaskConical className="h-4 w-4" />;
-    }
-
-    switch (item.type) {
-      case "youtube_video":
-        return <PlaySquare className="h-4 w-4" />;
-      case "podcast":
-        return <Mic className="h-4 w-4" />;
-      case "research_paper":
-      case "academic":
-        return <FileText className="h-4 w-4" />;
-      case "twitter_post":
-        return <X className="h-4 w-4" />;
-      default:
-        return <FileText className="h-4 w-4" />;
-    }
-  };
+  const cardStyleClasses = getCardStyleClasses(isAiTrends, item.type);
+  const itemIcon = renderItemIcon(item, isAiTrends);
 
   const handleCardClick = useCallback(() => {
     const snapshot = trackingSnapshotRef.current;
@@ -501,21 +547,7 @@ const ArticleCard = memo(function ArticleCard({
   }, []);
 
   const isYouTube = item.type === "youtube_video";
-  
-  // Extract YouTube video ID from URL
-  const getYouTubeVideoId = (url: string): string | null => {
-    const patterns = [
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
-      /youtube\.com\/embed\/([^&\n?#]+)/,
-    ];
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) return match[1];
-    }
-    return null;
-  };
-
-  const youtubeVideoId = isYouTube && item.sourceUrl ? getYouTubeVideoId(item.sourceUrl) : null;
+  const youtubeVideoId = isYouTube && item.sourceUrl ? extractYouTubeVideoId(item.sourceUrl) : null;
 
   // Handle hover for YouTube videos
   const handleMouseEnter = () => {
@@ -561,15 +593,9 @@ const ArticleCard = memo(function ArticleCard({
   const titleLength = item.title.trim().length;
   let titleSize = isAiTrends ? "text-2xl" : "text-lg"; // Bigger title for AI Trends
 
-  const longTitleRules = [
-    { minLength: 220, size: "text-xs" },
-    { minLength: 170, size: "text-sm" },
-    { minLength: 130, size: "text-base" },
-  ];
-
   // Don't apply long title rules to AI Trends
   if (!isAiTrends) {
-    for (const rule of longTitleRules) {
+    for (const rule of LONG_TITLE_RULES) {
       if (titleLength >= rule.minLength) {
         titleSize = rule.size;
         break;
@@ -595,7 +621,7 @@ const ArticleCard = memo(function ArticleCard({
   return (
     <div
       ref={registerViewRef as RefCallback<HTMLDivElement>}
-      className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full ${getCardStyleClasses()}`}
+      className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full ${cardStyleClasses}`}
       onClick={handleCardClick}
     >
       {/* Subtle accent for AI Trends */}
@@ -637,7 +663,7 @@ const ArticleCard = memo(function ArticleCard({
           {!isAiTrends && (
             <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
               <div className="flex items-center">
-                {getIcon()}
+                {itemIcon}
                 <span className="ml-2 capitalize">{item.type.replace("_", " ")}</span>
               </div>
               <div className="flex items-center gap-2">
