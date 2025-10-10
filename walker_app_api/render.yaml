@@ -23,7 +23,7 @@ services:
           name: walker-app-db
           property: connectionString
       - key: CORS_ORIGINS
-        value: "https://your-frontend-domain.vercel.app,http://localhost:5173"
+        value: "https://ai-now.vercel.app,http://localhost:5173"
       - key: LOG_LEVEL
         value: INFO
       - key: LOG_FORMAT

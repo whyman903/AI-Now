@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.grok import GrokProvider
 from pydantic_ai.common_tools.tavily import tavily_search_tool
@@ -30,8 +30,8 @@ class TrendingSummary(BaseModel):
 
 async def _generate_ai_trends_summary() -> TrendingSummary:
     """Generate a concise summary of what's trending in AI using Tavily."""
-    
-    today = datetime.now().strftime("%B %d, %Y")
+
+    today = datetime.now(timezone.utc).strftime("%B %d, %Y")
 
     agent = Agent(
         OpenAIChatModel("grok-4-fast", provider=GrokProvider(api_key=settings.XAI_API_KEY)),
@@ -60,37 +60,54 @@ async def _generate_ai_trends_summary() -> TrendingSummary:
     )
 
     result = await agent.run(
-        f"""Today is {today}. 
-        Find the most important AI news today
+        f"""Today is {today}. Find the MOST GROUNDBREAKING AI news from the past 3-5 days and return a numbered list.
 
-        IMPORTANT: When using the Tavily search tool, use SHORT search queries.  
-        Examples:"AI breakthrough research this week"
-        
-        WHAT COUNTS AS IMPORTANT:
-        - Major AI model launches from top labs (OpenAI, Anthropic, Google, XAI, etc.) - NOT beta tests
-        - Game-changing product launches (ChatGPT Sora, Google Astra, AI agents)
-        - Breakthrough research papers that shift the field
-        - Major acquisitions or IPOs in AI space
-        
-        CRITICAL SOURCE REQUIREMENTS:
-        - You MUST use authoritative, tier-1 sources — prioritize the company’s own official releases, or trusted outlets like TechCrunch, The Verge, Bloomberg, Reuters, Wired, MIT Technology Review, Financial Times, Axios, or WSJ; if a story appears only on low-quality or SEO-driven sites (e.g., ts2.tech, TestingCatalog), skip it and find a reputable alternative.
+            IMPORTANT: When using the Tavily search tool, use SHORT search queries under 400 characters. 
+            Examples: "major AI model releases October 2025", "OpenAI GPT Claude Gemini announcements", "AI breakthrough research this week"
+            
+            Start directly with "1." - do NOT include any title, heading, introduction, or preamble.
 
-        FORMAT:
-        - ONE punchy sentence per item
-        - Bold **key terms** inline
-        - End with: [Source Name](URL)
-        
-        Example: "**OpenAI** launched **ChatGPT Sora**, a new collaborative interface enabling direct document editing within conversations. The feature supports **real-time collaboration** on code and documents, with users able to highlight sections and request targeted revisions without rewriting entire prompts. [The Verge](https://example.com)"   
-        Provide 5 TRULY GROUNDBREAKING items. Quality over quantity - if you can't find 5 with tier-1 sources, provide fewer.
+            WHAT COUNTS AS GROUNDBREAKING:
+            - Major AI model launches from top labs (GPT-5, Claude 4, Gemini 2, Grok 3, Llama 4) - NOT beta tests
+            - Revolutionary new capabilities or benchmarks (AGI milestones, new reasoning abilities)
+            - Game-changing product launches (ChatGPT Canvas, Google Astra, AI agents)
+            - Massive funding ($1B+) or valuations ($10B+) for major AI companies
+            - Breakthrough research papers that shift the field
+            - Major acquisitions or IPOs in AI space
+            
+            STRICT EXCLUSIONS:
+            - Hardware partnerships (GPU deals, chip agreements)
+            - Routine funding rounds under $1B
+            - Partnerships between companies unless they're industry-defining
+            - Pre-release testing, A/B tests, rumors
+            - Consumer hardware products
+            - Startups with <$5B valuation
+            - Crime, misuse, or controversy stories
+
+            CRITICAL SOURCE REQUIREMENTS:
+            - You MUST use authoritative sources: TechCrunch, The Verge, Bloomberg, Reuters, Wired, MIT Technology Review, Financial Times, WSJ, official company blogs
+            - If a story is ONLY available on low-quality sites (ts2.tech, TestingCatalog, SEO blogs), SKIP IT and find a different story
+            - Each citation must be from a tier-1 source or official company announcement
+
+            TENSE: Use PAST TENSE for completed events. If DevDay was October 6 and today is October 8, write "OpenAI announced" NOT "OpenAI is set to announce".
+
+            FORMAT:
+            - ONE punchy sentence per item
+            - Bold **key terms** inline
+            - End with: [Source Name](URL)
+            
+            Example: "**OpenAI** launched **ChatGPT Canvas**, a new collaborative interface enabling direct document editing within conversations. [The Verge](https://example.com)"
+
+            Provide 5 TRULY GROUNDBREAKING items. Quality over quantity - if you can't find 5 with tier-1 sources, provide fewer.
         """
     )
     return result.output
 
 
-def scrape() -> List[Dict[str, Any]]:
-    """Entry point for the content aggregator."""
+async def scrape_async() -> List[Dict[str, Any]]:
+    """Async entry point for the content aggregator."""
     try:
-        trends = asyncio.run(_generate_ai_trends_summary())
+        trends = await _generate_ai_trends_summary()
     except Exception as exc:
         logger.error("AI trends summary generation failed: %s", exc, exc_info=True)
         return []
@@ -98,8 +115,8 @@ def scrape() -> List[Dict[str, Any]]:
     timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
     return [
         {
-            "title": f"AI Trends",
-            "url": "#",
+            "title": "AI Trends Digest",
+            "url": "https://ai-now.vercel.app/",
             "published_at": timestamp,
             "meta_data": {
                 "source_name": "Tavily AI Trends",
@@ -107,8 +124,18 @@ def scrape() -> List[Dict[str, Any]]:
                 "generated_by": "pydantic_ai",
                 "model": "grok-4-fast",
                 "search_engine": "tavily",
+                "generated_at": timestamp.isoformat(),
             },
         }
     ]
 
 
+def scrape() -> List[Dict[str, Any]]:
+    """Backward-compatible synchronous entry point."""
+    try:
+        return asyncio.run(scrape_async())
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "tavily_trending.scrape() cannot run inside an active event loop; "
+            "await scrape_async() instead."
+        ) from exc

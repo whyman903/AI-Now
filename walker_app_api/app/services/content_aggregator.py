@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import re
 import time
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import feedparser
@@ -93,7 +94,7 @@ class ContentAggregator:
                 "scrape_func": thinkingmachines_agg.scrape,
             },
             {"name": "Hugging Face Papers", "category": "ai_ml", "scrape_func": huggingface_agg.scrape_trending_papers},
-            {"name": "Tavily AI Trends", "category": "ai_ml", "scrape_func": tavily_trending.scrape},
+            {"name": "Tavily AI Trends", "category": "ai_ml", "scrape_func": tavily_trending.scrape_async},
         ]
 
 
@@ -681,12 +682,15 @@ class ContentAggregator:
     async def _process_web_scraper(self, source: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Process a single web scraper and return normalized items."""
         name = source["name"]
-        scrape: Callable[[], List[Dict[str, Any]]] = source["scrape_func"]
+        scrape = source["scrape_func"]
         
         start = time.perf_counter()
         logger.info("Starting scrape for %s", name)
         try:
-            raw_items = await asyncio.to_thread(scrape)
+            if inspect.iscoroutinefunction(scrape):
+                raw_items = await scrape()
+            else:
+                raw_items = await asyncio.to_thread(scrape)
         except Exception as exc:
             elapsed = time.perf_counter() - start
             logger.error("Error scraping %s after %.2fs: %s", name, elapsed, exc)
