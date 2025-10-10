@@ -116,7 +116,7 @@ async def scrape_async() -> List[Dict[str, Any]]:
     return [
         {
             "title": "AI Trends Digest",
-            "url": "https://ai-now.vercel.app/",
+            "url": "#",
             "published_at": timestamp,
             "meta_data": {
                 "source_name": "Tavily AI Trends",
