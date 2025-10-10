@@ -54,36 +54,6 @@ async def trigger_aggregation(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post(
-    "/aggregate-now",
-    dependencies=[Depends(require_aggregation_token)],
-)
-async def aggregate_now(hours_back: int = 24) -> Dict[str, Any]:
-    """
-    Immediately aggregate content from all sources (synchronous).
-    
-    Args:
-        hours_back: How many hours back to fetch content (default: 24)
-        
-    Returns:
-        Dict with detailed aggregation results
-    """
-    try:
-        logger.info(f"Starting immediate content aggregation for last {hours_back} hours")
-        
-        aggregator = get_content_aggregator()
-        results = await aggregator.aggregate_all_content()
-        
-        return {
-            "status": "completed",
-            "results": results
-        }
-        
-    except Exception as e:
-        logger.error(f"Error during immediate content aggregation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/status")
 async def get_aggregation_status(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """
