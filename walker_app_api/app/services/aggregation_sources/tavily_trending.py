@@ -60,34 +60,20 @@ async def _generate_ai_trends_summary() -> TrendingSummary:
     )
 
     result = await agent.run(
-        f"""Today is {today}. This is ground truth. 
-        Find the MOST GROUNDBREAKING AI news from the past 3-5 days and return a numbered list.
+        f"""Today is {today}. 
+        Find the most important AI news today
 
-        IMPORTANT: When using the Tavily search tool, use SHORT search queries under 400 characters. 
-        Examples: "major AI model releases October 2025", "OpenAI GPT Claude Gemini announcements", "AI breakthrough research this week"
+        IMPORTANT: When using the Tavily search tool, use SHORT search queries.  
+        Examples:"AI breakthrough research this week"
         
-        Start directly with "1." - do NOT include any title, heading, introduction, or preamble.
-
-        WHAT COUNTS AS GROUNDBREAKING:
+        WHAT COUNTS AS IMPORTANT:
         - Major AI model launches from top labs (OpenAI, Anthropic, Google, XAI, etc.) - NOT beta tests
         - Game-changing product launches (ChatGPT Sora, Google Astra, AI agents)
         - Breakthrough research papers that shift the field
         - Major acquisitions or IPOs in AI space
         
-        STRICT EXCLUSIONS:
-        - Routine funding rounds under $1B
-        - Partnerships between companies unless they're industry-defining
-        - Pre-release testing, A/B tests, rumors
-        - Consumer hardware products
-        - Startups with <$5B valuation
-        - Crime, misuse, or controversy stories
-
         CRITICAL SOURCE REQUIREMENTS:
-        - You MUST use authoritative sources: Prioritize the company's own direct releases. Use other reputable sources like TechCrunch, The Verge, Bloomberg, Reuters, Wired, MIT Technology Review, Financial Times, Axios, WSJ, etc. 
-        - If a story is ONLY available on low-quality sites (ts2.tech, TestingCatalog, SEO blogs), SKIP IT and find a different story
-        - Each citation must be from a tier-1 source or official company announcement
-
-        TENSE: Use PAST TENSE for completed events. If DevDay was October 6 and today is October 8, write "OpenAI announced" NOT "OpenAI is set to announce".
+        - You MUST use authoritative, tier-1 sources — prioritize the company’s own official releases, or trusted outlets like TechCrunch, The Verge, Bloomberg, Reuters, Wired, MIT Technology Review, Financial Times, Axios, or WSJ; if a story appears only on low-quality or SEO-driven sites (e.g., ts2.tech, TestingCatalog), skip it and find a reputable alternative.
 
         FORMAT:
         - ONE punchy sentence per item

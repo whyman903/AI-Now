@@ -27,6 +27,12 @@ start_python_backend() {
     
     if check_port 8000; then
         cd walker_app_api
+        project_root=$(pwd)
+        # Neutralize any pre-activated virtualenv so uv can target the project-local .venv
+        if [ -n "${VIRTUAL_ENV:-}" ] && [ "${VIRTUAL_ENV}" != "${project_root}/.venv" ]; then
+            echo "Detected active virtual environment at ${VIRTUAL_ENV}; switching to ${project_root}/.venv for this project."
+        fi
+        unset VIRTUAL_ENV
         if [ ! -f "pyproject.toml" ]; then
             echo "ERROR: pyproject.toml not found in walker_app_api/"
             exit 1
@@ -35,7 +41,7 @@ start_python_backend() {
         # Create virtual environment if it doesn't exist using uv
         if [ ! -d ".venv" ]; then
             echo "Creating Python virtual environment with uv..."
-            uv venv
+            uv venv .venv
         fi
         
         echo "Installing Python dependencies with uv..."

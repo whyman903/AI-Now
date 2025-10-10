@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, RefCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   FileText,
@@ -12,6 +13,8 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown from "react-markdown";
+import { trackContentClick, trackContentView } from "@/lib/analytics";
+import { useViewTracking } from "@/hooks/use-view-tracking";
 import type { ContentItem } from "@shared/schema";
 
 interface MosaicContentItem extends ContentItem {
@@ -28,6 +31,85 @@ interface MosaicFeedProps {
 const BASE_ROW_PX = 320;
 const BASE_IMAGE_HEIGHT = 160;
 const GRID_GAP_PX = 16;
+
+interface TrendingPaperCardProps {
+  paper: MosaicContentItem;
+  index: number;
+}
+
+function TrendingPaperCard({ paper, index }: TrendingPaperCardProps) {
+  const handleView = useCallback(() => {
+    trackContentView(paper.id, {
+      position: index,
+      sourceName: paper.metadata?.source_name ?? undefined,
+      contentType: paper.type,
+      metadata: paper.metadata ?? undefined,
+    });
+  }, [index, paper.id, paper.metadata, paper.type]);
+
+  const registerViewRef = useViewTracking(handleView);
+
+  const handleClick = useCallback(() => {
+    if (!paper.sourceUrl) return;
+    trackContentClick(paper.id, {
+      position: index,
+      sourceName: paper.metadata?.source_name ?? undefined,
+      contentType: paper.type,
+      metadata: paper.metadata ?? undefined,
+    });
+    window.open(paper.sourceUrl, "_blank");
+  }, [index, paper.id, paper.metadata, paper.sourceUrl, paper.type]);
+
+  const handleGithubClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      if (paper.metadata?.github_url) {
+        window.open(paper.metadata.github_url, "_blank", "noopener,noreferrer");
+      }
+    },
+    [paper.metadata]
+  );
+
+  return (
+    <div
+      ref={registerViewRef as RefCallback<HTMLDivElement>}
+      className="trending-paper-card group cursor-pointer rounded-xl p-3 h-24 overflow-hidden bg-gradient-to-br from-blue-50 via-sky-50/50 to-background dark:bg-none dark:bg-blue-950/20 hover:shadow-[0_8px_20px_rgba(153,153,153,0.25)] transition-all duration-300 border-l-4 border-blue-500 dark:border-blue-700"
+      onClick={handleClick}
+    >
+      <div className="flex items-start gap-3">
+        <div className="shrink-0 mt-0.5">
+          <span className="text-2xl font-bold text-blue-600 dark:text-gray-300 font-mono">
+            {index + 1}
+          </span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h3
+              className={`trending-paper-title font-serif ${
+                paper.title.length > 100 ? "text-xs" : "text-sm"
+              } font-semibold leading-snug line-clamp-2 text-blue-900 dark:text-gray-300`}
+            >
+              {paper.title}
+            </h3>
+            {paper.metadata?.github_url && (
+              <button
+                type="button"
+                aria-label="Open associated GitHub repository"
+                className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1 transition-colors bg-blue-200/60 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60"
+                onClick={handleGithubClick}
+              >
+                <Github className="h-4 w-4 text-blue-700 dark:text-gray-300" />
+              </button>
+            )}
+          </div>
+          {paper.author && (
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">By {paper.author}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
   if (!items || items.length === 0) {
@@ -62,7 +144,7 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
   const contentWithLatestTrends = regularContent.filter(
     (item) => item.metadata?.source_name !== "Tavily AI Trends"
   );
-    const finalContent = latestAiTrends 
+  const finalContent = latestAiTrends
     ? [latestAiTrends, ...contentWithLatestTrends]
     : contentWithLatestTrends;
 
@@ -123,6 +205,7 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
             item={item}
             imageHeight={cardHeight}
             variant={isFeatured ? "featured" : "default"}
+            position={absoluteIndex}
           />
         </div>
       );
@@ -164,42 +247,7 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
 
             <div className="space-y-3">
               {papers.slice(0, 10).map((paper, idx) => (
-                <div
-                  key={paper.id}
-                  className="trending-paper-card group cursor-pointer rounded-xl p-3 h-24 overflow-hidden bg-gradient-to-br from-blue-50 via-sky-50/50 to-background dark:bg-none dark:bg-blue-950/20 hover:shadow-[0_8px_20px_rgba(153,153,153,0.25)] transition-all duration-300 border-l-4 border-blue-500 dark:border-blue-700"
-                  onClick={() => paper.sourceUrl && window.open(paper.sourceUrl, "_blank")}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="shrink-0 mt-0.5">
-                      <span className="text-2xl font-bold text-blue-600 dark:text-gray-300 font-mono">
-                        {idx + 1}
-                      </span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className={`trending-paper-title font-serif ${paper.title.length > 100 ? "text-xs" : "text-sm"} font-semibold leading-snug line-clamp-2 text-blue-900 dark:text-gray-300`}>
-                          {paper.title}
-                        </h3>
-                        {paper.metadata?.github_url && (
-                          <button
-                            type="button"
-                            aria-label="Open associated GitHub repository"
-                            className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1 transition-colors bg-blue-200/60 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              window.open(paper.metadata?.github_url, "_blank", "noopener,noreferrer");
-                            }}
-                          >
-                            <Github className="h-4 w-4 text-blue-700 dark:text-gray-300" />
-                          </button>
-                        )}
-                      </div>
-                      {paper.author && (
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">By {paper.author}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <TrendingPaperCard key={paper.id} paper={paper} index={idx} />
               ))}
             </div>
 
@@ -237,15 +285,25 @@ interface ArticleCardProps {
   item: MosaicContentItem;
   imageHeight: number;
   variant?: "default" | "featured";
+  position?: number;
 }
 
-function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProps) {
+function ArticleCard({ item, imageHeight, variant = "default", position }: ArticleCardProps) {
   const hasThumbnail = !!item.thumbnailUrl;
   const [hideImage, setHideImage] = useState(!hasThumbnail);
   const githubUrl = item.metadata?.github_url as string | undefined;
   const isAiTrends = item.metadata?.source_name === "Tavily AI Trends";
   const [showYouTubePlayer, setShowYouTubePlayer] = useState(false);
   const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const handleView = useCallback(() => {
+    trackContentView(item.id, {
+      position,
+      sourceName: item.metadata?.source_name ?? undefined,
+      contentType: item.type,
+      metadata: item.metadata ?? undefined,
+    });
+  }, [item.id, item.metadata, item.type, position]);
+  const registerViewRef = useViewTracking(handleView);
 
   const getCardStyleClasses = () => {
     if (isAiTrends) {
@@ -284,6 +342,12 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
 
   const handleCardClick = () => {
     if (item.sourceUrl) {
+      trackContentClick(item.id, {
+        position,
+        sourceName: item.metadata?.source_name ?? undefined,
+        contentType: item.type,
+        metadata: item.metadata ?? undefined,
+      });
       window.open(item.sourceUrl, "_blank");
     }
   };
@@ -382,6 +446,7 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
 
   return (
     <div
+      ref={registerViewRef as RefCallback<HTMLDivElement>}
       className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
@@ -501,4 +566,3 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
     </div>
   );
 }
-

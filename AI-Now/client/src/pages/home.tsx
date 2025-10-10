@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import MosaicFeed from "@/components/feed/MosaicFeed";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -6,6 +6,8 @@ import { LabSidebar } from "@/components/layout/LabSidebar";
 import { AppLogo } from "@/components/branding/AppLogo";
 import { Plus, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { trackSearch } from "@/lib/analytics";
+import { ensureSessionRegistered } from "@/lib/session";
 
 interface LabFilter {
   id: string;
@@ -27,6 +29,9 @@ export default function Home() {
   const [selectedContentTypes, setSelectedContentTypes] = useState<ContentTypeFilter[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [keywordFilter, setKeywordFilter] = useState("");
+  const lastTrackedSearchKey = useRef<string | null>(null);
+  const searchDebounceHandle = useRef<number | null>(null);
+  const latestResultsCount = useRef<number>(0);
 
   const labsQuery = useQuery({
     queryKey: ["lab_filters"],
@@ -57,6 +62,10 @@ export default function Home() {
     () => selectedContentTypes.map((type) => type.value),
     [selectedContentTypes]
   );
+
+  useEffect(() => {
+    ensureSessionRegistered({ force: true });
+  }, []);
 
   const hasActiveFilters = selectedLabs.length > 0 || selectedContentTypes.length > 0 || keywordFilter.trim() !== "";
 
@@ -228,6 +237,10 @@ export default function Home() {
     });
   }, [combined, keywordFilter]);
 
+  useEffect(() => {
+    latestResultsCount.current = filteredContent.length;
+  }, [filteredContent.length]);
+
   // Auto-load more pages when searching to improve search results
   useEffect(() => {
     if (keywordFilter.trim() && hasNextPage && !isFetchingNextPage && !isLoading) {
@@ -237,6 +250,57 @@ export default function Home() {
       }
     }
   }, [keywordFilter, filteredContent.length, hasNextPage, isFetchingNextPage, isLoading, fetchNextPage]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (searchDebounceHandle.current !== null) {
+      window.clearTimeout(searchDebounceHandle.current);
+    }
+
+    const trimmedQuery = keywordFilter.trim();
+    if (!trimmedQuery) {
+      lastTrackedSearchKey.current = null;
+      searchDebounceHandle.current = null;
+      return;
+    }
+
+    const filtersPayload: Record<string, unknown> = {};
+    if (selectedAuthors.length) {
+      filtersPayload.labs = selectedAuthors;
+    }
+    if (selectedTypeValues.length) {
+      filtersPayload.content_types = selectedTypeValues;
+    }
+
+    const trackingKey = JSON.stringify({
+      query: trimmedQuery,
+      labs: selectedAuthors,
+      types: selectedTypeValues,
+    });
+
+    searchDebounceHandle.current = window.setTimeout(() => {
+      if (lastTrackedSearchKey.current === trackingKey) {
+        return;
+      }
+
+      trackSearch(trimmedQuery, {
+        resultsCount: latestResultsCount.current,
+        filters: Object.keys(filtersPayload).length ? filtersPayload : undefined,
+      });
+
+      lastTrackedSearchKey.current = trackingKey;
+    }, 600);
+
+    return () => {
+      if (searchDebounceHandle.current !== null) {
+        window.clearTimeout(searchDebounceHandle.current);
+        searchDebounceHandle.current = null;
+      }
+    };
+  }, [keywordFilter, selectedAuthors, selectedTypeValues]);
 
   const labs = labsQuery.data?.labs ?? [];
 

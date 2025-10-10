@@ -79,6 +79,7 @@ main_folder/
    # Create .env file in walker_app_api/
    # Add DATABASE_URL, AGGREGATION_SERVICE_TOKEN
    ```
+   > The backend uses `uv` with a project-local virtual environment stored in `.venv/`. If you previously created a `venv/` directory, remove it to avoid environment conflicts.
 
 3. **Start services**
    ```bash
@@ -115,4 +116,3 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed deployment instructions.
 - **Frontend**: Vercel (CDN + auto-deploy)
 - **Backend**: Render (containerized Python)
 - **Database**: PostgreSQL on Render
-
