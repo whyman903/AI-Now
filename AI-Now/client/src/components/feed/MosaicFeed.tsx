@@ -153,9 +153,9 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
         {papers.length > 0 && (
           <aside ref={sidebarRef} className="col-span-1 lg:col-start-4 lg:col-span-1">
             <div className="pb-3 mb-4">
-              <h2 className="text-3xl font-bold text-blue-900 dark:text-gray-300">Trending Research</h2>
+              <h2 className="text-2xl font-bold text-black dark:text-gray-300">Trending Research</h2>
               {latestScrapeDate && (
-                <p className="text-xs text-blue-600/80 dark:text-blue-400/70 mt-1">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   Updated {new Date(latestScrapeDate).toLocaleDateString()}
                 </p>
                 
@@ -195,7 +195,7 @@ export default function MosaicFeed({ items, cardSize = 1 }: MosaicFeedProps) {
                         )}
                       </div>
                       {paper.author && (
-                        <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mt-1 truncate">By {paper.author}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">By {paper.author}</p>
                       )}
                     </div>
                   </div>
@@ -249,7 +249,7 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
 
   const getCardStyleClasses = () => {
     if (isAiTrends) {
-      return "relative overflow-hidden bg-gradient-to-br from-cyan-50 via-blue-50/50 to-background dark:from-emerald-950/30 dark:via-teal-950/20 dark:to-background hover:shadow-xl transition-all duration-300 border-l-4 border-cyan-500 dark:border-emerald-600";
+      return "article-card-ai-trends overflow-hidden";
     }
     switch (item.type) {
       case "youtube_video":
@@ -261,7 +261,7 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
 
   const getIcon = () => {
     if (isAiTrends) {
-      return <TrendingUp className="h-4 w-4 text-cyan-600 dark:text-gray-300" />;
+      return <TrendingUp className="h-4 w-4 text-slate-500 dark:text-gray-300" />;
     }
     if (item.metadata?.source_name === "Hugging Face Papers") {
       return <FlaskConical className="h-4 w-4" />;
@@ -347,7 +347,7 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
   }
   
   const titleLength = item.title.trim().length;
-  let titleSize = isAiTrends ? "text-xl" : "text-lg"; // Bigger title for AI Trends
+  let titleSize = isAiTrends ? "text-2xl" : "text-lg"; // Bigger title for AI Trends
 
   const longTitleRules = [
     { minLength: 220, size: "text-xs" },
@@ -382,12 +382,12 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
 
   return (
     <div
-      className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full overflow-hidden ${getCardStyleClasses()}`}
+      className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full ${getCardStyleClasses()}`}
       onClick={handleCardClick}
     >
       {/* Subtle accent for AI Trends */}
       {isAiTrends && (
-        <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-400/20 dark:bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="ai-trends-accent" />
       )}
 
       {!hideImage && (
@@ -453,7 +453,7 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
 
           <h3 className={`font-serif font-bold ${titleSize} ${titleMargin} leading-tight transition-colors ${titleClamp} ${
             isAiTrends 
-              ? "text-cyan-900 dark:text-gray-300 group-hover:text-cyan-700 dark:group-hover:text-gray-300" 
+              ? "text-black dark:text-gray-300 group-hover:text-black dark:group-hover:text-gray-300" 
               : "group-hover:text-primary"
           }`}>
             {isAiTrends ? "What's Happening Now?" : item.title}
@@ -461,33 +461,22 @@ function ArticleCard({ item, imageHeight, variant = "default" }: ArticleCardProp
 
           {/* Only show summary for AI Trends digest */}
           {isAiTrends && item.metadata?.summary && (
-            <div className={`text-foreground dark:text-gray-300 ${summaryClamp} leading-relaxed prose max-w-none`}>
+            <div className={`ai-trends-prose ${summaryClamp} leading-relaxed`}>
               <ReactMarkdown
                 components={{
                   a: ({ node, ...props }) => (
                     <a
                       {...props}
-                      className="text-cyan-600 dark:text-gray-300 hover:text-cyan-700 dark:hover:text-gray-400 underline transition-colors"
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ),
-                  ol: ({ node, ...props }) => (
-                    <ol {...props} className="space-y-4 list-decimal pl-6 marker:font-semibold marker:text-cyan-600 dark:marker:text-gray-300" />
-                  ),
-                  ul: ({ node, ...props }) => (
-                    <ul {...props} className="space-y-2 list-disc pl-5" />
-                  ),
-                  li: ({ node, ...props }) => (
-                    <li {...props} className="text-base leading-relaxed" />
-                  ),
-                  p: ({ node, ...props }) => (
-                    <p {...props} className="text-base leading-relaxed" />
-                  ),
-                  strong: ({ node, ...props }) => (
-                    <strong {...props} className="font-semibold text-cyan-900 dark:text-gray-300" />
-                  ),
+                  ol: ({ node, ...props }) => <ol {...props} />,
+                  ul: ({ node, ...props }) => <ul {...props} />,
+                  li: ({ node, ...props }) => <li {...props} />,
+                  p: ({ node, ...props }) => <p {...props} />,
+                  strong: ({ node, ...props }) => <strong {...props} />,
                 }}
               >
                 {item.metadata.summary.replace(/\\n/g, '\n')}
