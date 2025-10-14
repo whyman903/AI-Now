@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.crud.analytics import AnalyticsCRUD
 from app.db.base import get_db
+from app.services.analytics_queue import AnalyticsQueueFullError, analytics_queue
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,33 @@ class SearchClickPayload(BaseModel):
     clicked_position: Optional[int] = None
 
 
+class InteractionBatchPayload(BaseModel):
+    interactions: List[InteractionPayload] = Field(
+        ...,
+        min_items=1,
+        max_items=200,
+        description="Collection of interaction events to persist in a single request",
+    )
+
+
+class SearchBatchPayload(BaseModel):
+    searches: List[SearchPayload] = Field(
+        ...,
+        min_items=1,
+        max_items=200,
+        description="Collection of search events to persist in a single request",
+    )
+
+
+class SearchClickBatchPayload(BaseModel):
+    updates: List[SearchClickPayload] = Field(
+        ...,
+        min_items=1,
+        max_items=200,
+        description="Collection of search click updates to apply",
+    )
+
+
 @router.post("/session", tags=["analytics"])
 async def create_or_update_session(
     payload: SessionPayload,
@@ -80,83 +108,150 @@ async def create_or_update_session(
 async def track_interaction(
     payload: InteractionPayload,
     request: Request,
-    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    referer = request.headers.get("referer")
+    user_agent = request.headers.get("user-agent")
+    forwarded_for = request.headers.get("x-forwarded-for")
+    ip_address = forwarded_for.split(",")[0].strip() if forwarded_for else request.client.host if request.client else None
+
+    try:
+        return analytics_queue.enqueue_interaction(
+            {
+                "content_id": payload.content_id,
+                "interaction_type": payload.interaction_type,
+                "session_id": payload.session_id,
+                "user_id": payload.user_id,
+                "source_page": payload.source_page,
+                "position": payload.position,
+                "referrer": referer,
+                "user_agent": user_agent,
+                "metadata": payload.metadata,
+                "ip_address": ip_address,
+            }
+        )
+    except AnalyticsQueueFullError as exc:
+        logger.warning(
+            "Analytics queue full; dropping interaction",
+            extra={
+                "content_id": payload.content_id,
+                "interaction_type": payload.interaction_type,
+                "session_id": payload.session_id,
+            },
+        )
+        raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
+
+
+@router.post("/track/interactions/batch", tags=["analytics"])
+async def track_interactions_batch(
+    payload: InteractionBatchPayload,
+    request: Request,
 ) -> Dict[str, Any]:
     try:
-        interaction = AnalyticsCRUD.track_interaction(
-            db,
-            content_id=payload.content_id,
-            interaction_type=payload.interaction_type,
-            session_id=payload.session_id,
-            user_id=payload.user_id,
-            source_page=payload.source_page,
-            position=payload.position,
-            referrer=request.headers.get("referer"),
-            user_agent=request.headers.get("user-agent"),
-            metadata=payload.metadata,
+        referer = request.headers.get("referer")
+        user_agent = request.headers.get("user-agent")
+        forwarded_for = request.headers.get("x-forwarded-for")
+        ip_address = forwarded_for.split(",")[0].strip() if forwarded_for else request.client.host if request.client else None
+
+        results = analytics_queue.enqueue_interactions(
+            {
+                "content_id": item.content_id,
+                "interaction_type": item.interaction_type,
+                "session_id": item.session_id,
+                "user_id": item.user_id,
+                "source_page": item.source_page,
+                "position": item.position,
+                "referrer": referer,
+                "user_agent": user_agent,
+                "metadata": item.metadata,
+                "ip_address": ip_address,
+            }
+            for item in payload.interactions
         )
-        return {
-            "interaction_id": str(interaction.id),
-            "content_id": interaction.content_id,
-            "interaction_type": interaction.interaction_type,
-            "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else None,
-        }
-    except SQLAlchemyError as exc:
-        logger.exception("Failed to track interaction", extra={
-            "content_id": payload.content_id,
-            "interaction_type": payload.interaction_type,
-            "session_id": payload.session_id,
-        })
-        raise HTTPException(status_code=500, detail="Unable to track interaction.") from exc
+        return {"count": len(results), "results": results}
+    except AnalyticsQueueFullError as exc:
+        logger.warning("Analytics queue full; dropping interaction batch", extra={"batch_size": len(payload.interactions)})
+        raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
 
 
 @router.post("/track/search", tags=["analytics"])
 async def track_search(
     payload: SearchPayload,
     request: Request,
-    db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
+    referer = request.headers.get("referer")
+    user_agent = request.headers.get("user-agent")
     try:
-        search = AnalyticsCRUD.track_search(
-            db,
-            query=payload.query,
-            results_count=payload.results_count,
-            session_id=payload.session_id,
-            user_id=payload.user_id,
-            filters=payload.filters,
-            referrer=request.headers.get("referer"),
-            user_agent=request.headers.get("user-agent"),
+        return analytics_queue.enqueue_search(
+            {
+                "query": payload.query,
+                "results_count": payload.results_count,
+                "session_id": payload.session_id,
+                "user_id": payload.user_id,
+                "filters": payload.filters,
+                "referrer": referer,
+                "user_agent": user_agent,
+            }
         )
-        return {
-            "search_id": str(search.id),
-            "query": search.query,
-            "timestamp": search.timestamp.isoformat() if search.timestamp else None,
-        }
-    except SQLAlchemyError as exc:
-        raise HTTPException(status_code=500, detail="Unable to track search.") from exc
+    except AnalyticsQueueFullError as exc:
+        raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
+
+
+@router.post("/track/searches/batch", tags=["analytics"])
+async def track_searches_batch(
+    payload: SearchBatchPayload,
+    request: Request,
+) -> Dict[str, Any]:
+    referer = request.headers.get("referer")
+    user_agent = request.headers.get("user-agent")
+    try:
+        results = analytics_queue.enqueue_searches(
+            {
+                "query": item.query,
+                "results_count": item.results_count,
+                "session_id": item.session_id,
+                "user_id": item.user_id,
+                "filters": item.filters,
+                "referrer": referer,
+                "user_agent": user_agent,
+            }
+            for item in payload.searches
+        )
+        return {"count": len(results), "results": results}
+    except AnalyticsQueueFullError as exc:
+        raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
 
 
 @router.post("/track/search-click", tags=["analytics"])
 async def track_search_click(
     payload: SearchClickPayload,
-    db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
-        updated = AnalyticsCRUD.update_search_click(
-            db,
-            search_id=payload.search_id,
-            clicked_result_id=payload.clicked_result_id,
-            clicked_position=payload.clicked_position,
+        return analytics_queue.enqueue_search_click(
+            {
+                "search_id": payload.search_id,
+                "clicked_result_id": payload.clicked_result_id,
+                "clicked_position": payload.clicked_position,
+            }
         )
-        if not updated:
-            raise HTTPException(status_code=404, detail="Search not found")
-        return {
-            "search_id": str(updated.id),
-            "clicked_result_id": updated.clicked_result_id,
-            "clicked_position": updated.clicked_position,
-        }
-    except SQLAlchemyError as exc:
-        raise HTTPException(status_code=500, detail="Unable to update search click.") from exc
+    except AnalyticsQueueFullError as exc:
+        raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
+
+
+@router.post("/track/search-click/batch", tags=["analytics"])
+async def track_search_click_batch(
+    payload: SearchClickBatchPayload,
+) -> Dict[str, Any]:
+    try:
+        return analytics_queue.enqueue_search_clicks(
+            {
+                "search_id": item.search_id,
+                "clicked_result_id": item.clicked_result_id,
+                "clicked_position": item.clicked_position,
+            }
+            for item in payload.updates
+        )
+    except AnalyticsQueueFullError as exc:
+        raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
 
 
 @router.get("/content/{content_id}", tags=["analytics"])

@@ -54,6 +54,10 @@ async def _generate_ai_trends_summary() -> TrendingSummary:
                 - Write clear, concise summaries
                 - Focus on factual reporting, not speculation
                 - Prioritize authoritative sources
+
+            TOPIC FILTER:
+                - Avoid AI safety, ethics, misuse, regulation, or content-moderation stories.
+                - Focus only on technical, commercial, or research breakthroughs in AI.
             """)
         ,
         tools=[tavily_search_tool(api_key=settings.TAVILY_API_KEY)],

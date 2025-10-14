@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     
     # Background task settings
     BACKGROUND_TASK_SHUTDOWN_TIMEOUT: float = 5.0
+
+    # Analytics queue
+    ANALYTICS_QUEUE_MAXSIZE: int = 5000
+    ANALYTICS_QUEUE_BATCH_SIZE: int = 100
+    ANALYTICS_QUEUE_FLUSH_SECONDS: float = 0.5
     
     # Server settings (for direct uvicorn run)
     SERVER_HOST: str = "0.0.0.0"

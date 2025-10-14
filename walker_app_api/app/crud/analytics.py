@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
+from uuid import UUID, uuid4
 
 from sqlalchemy import and_, func, desc
 from sqlalchemy.orm import Session
@@ -73,19 +74,10 @@ class AnalyticsCRUD:
         return session
 
     @staticmethod
-    def increment_page_view(db: Session, *, session_id: str) -> None:
-        session = db.get(UserSession, session_id)
-        if not session:
-            return
-        session.page_views = (session.page_views or 0) + 1
-        session.last_seen = AnalyticsCRUD._utcnow()
-
-    # ------------------------------------------------------------------
-    # Interaction tracking
-    @staticmethod
-    def track_interaction(
+    def _record_interaction(
         db: Session,
         *,
+        interaction_id: Optional[Any] = None,
         content_id: str,
         interaction_type: str,
         session_id: Optional[str] = None,
@@ -95,10 +87,110 @@ class AnalyticsCRUD:
         referrer: Optional[str] = None,
         user_agent: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        ip_address: Optional[str] = None,
+        timestamp: Optional[Any] = None,
     ) -> ContentInteraction:
-        now = AnalyticsCRUD._utcnow()
-        tracked_session: Optional[UserSession] = None
+        interaction_timestamp = AnalyticsCRUD._parse_datetime(timestamp) if timestamp else None
+        recorded_at = interaction_timestamp or AnalyticsCRUD._utcnow()
+        interaction_uuid = _coerce_uuid(interaction_id)
 
+        tracked_session: Optional[UserSession] = None
+        if session_id:
+            tracked_session = AnalyticsCRUD.get_or_create_session(
+                db,
+                session_id=session_id,
+                user_id=user_id,
+                user_agent=user_agent,
+                referrer=referrer,
+                ip_address=ip_address,
+                commit=False,
+            )
+
+        interaction = ContentInteraction(
+            id=interaction_uuid,
+            content_id=content_id,
+            session_id=session_id,
+            user_id=user_id,
+            interaction_type=interaction_type,
+            timestamp=recorded_at,
+            source_page=source_page,
+            position=position,
+            referrer=referrer,
+            user_agent=user_agent,
+            meta_data=dict(metadata) if metadata else {},
+        )
+        db.add(interaction)
+
+        if tracked_session:
+            tracked_session.interactions = (tracked_session.interactions or 0) + 1
+            tracked_session.last_seen = recorded_at
+            if (interaction_type or "").lower() == "view":
+                tracked_session.page_views = (tracked_session.page_views or 0) + 1
+
+        if (interaction_type or "").lower() == "click":
+            content_item = db.get(ContentItem, content_id)
+            if content_item:
+                content_item.clicks = (content_item.clicks or 0) + 1
+
+        return interaction
+
+    @staticmethod
+    def batch_track_interactions(
+        db: Session,
+        *,
+        events: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not events:
+            return []
+
+        recorded: List[Dict[str, Any]] = []
+        for event in events:
+            interaction = AnalyticsCRUD._record_interaction(
+                db,
+                interaction_id=event.get("interaction_id"),
+                content_id=event["content_id"],
+                interaction_type=event["interaction_type"],
+                session_id=event.get("session_id"),
+                user_id=event.get("user_id"),
+                source_page=event.get("source_page"),
+                position=event.get("position"),
+                referrer=event.get("referrer"),
+                user_agent=event.get("user_agent"),
+                metadata=event.get("metadata"),
+                ip_address=event.get("ip_address"),
+                timestamp=event.get("timestamp"),
+            )
+            recorded.append(
+                {
+                    "interaction_id": str(interaction.id),
+                    "content_id": interaction.content_id,
+                    "interaction_type": interaction.interaction_type,
+                    "timestamp": interaction.timestamp.isoformat() if interaction.timestamp else None,
+                }
+            )
+
+        db.commit()
+        return recorded
+
+    @staticmethod
+    def _record_search(
+        db: Session,
+        *,
+        search_id: Optional[Any] = None,
+        query: str,
+        results_count: Optional[int] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        referrer: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        timestamp: Optional[Any] = None,
+    ) -> SearchQuery:
+        search_timestamp = AnalyticsCRUD._parse_datetime(timestamp) if timestamp else None
+        recorded_at = search_timestamp or AnalyticsCRUD._utcnow()
+        search_uuid = _coerce_uuid(search_id)
+
+        tracked_session: Optional[UserSession] = None
         if session_id:
             tracked_session = AnalyticsCRUD.get_or_create_session(
                 db,
@@ -109,79 +201,57 @@ class AnalyticsCRUD:
                 commit=False,
             )
 
-        interaction = ContentInteraction(
-            content_id=content_id,
-            session_id=session_id,
-            user_id=user_id,
-            interaction_type=interaction_type,
-            timestamp=now,
-            source_page=source_page,
-            position=position,
-            referrer=referrer,
-            user_agent=user_agent,
-            meta_data=metadata or {},
-        )
-        db.add(interaction)
-
-        if tracked_session:
-            tracked_session.interactions = (tracked_session.interactions or 0) + 1
-            tracked_session.last_seen = now
-
-        if interaction_type.lower() == "view" and session_id:
-            AnalyticsCRUD.increment_page_view(db, session_id=session_id)
-
-        if interaction_type.lower() == "click":
-            content_item = db.get(ContentItem, content_id)
-            if content_item:
-                content_item.clicks = (content_item.clicks or 0) + 1
-
-        db.commit()
-        db.refresh(interaction)
-        return interaction
-
-    @staticmethod
-    def track_search(
-        db: Session,
-        *,
-        query: str,
-        results_count: Optional[int] = None,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        referrer: Optional[str] = None,
-        user_agent: Optional[str] = None,
-    ) -> SearchQuery:
-        now = AnalyticsCRUD._utcnow()
-        if session_id:
-            AnalyticsCRUD.get_or_create_session(
-                db,
-                session_id=session_id,
-                user_id=user_id,
-                user_agent=user_agent,
-                referrer=referrer,
-                commit=False,
-            )
-
         search = SearchQuery(
+            id=search_uuid,
             query=query,
             session_id=session_id,
             user_id=user_id,
             results_count=results_count,
-            filters=filters or {},
+            filters=dict(filters) if filters else {},
             referrer=referrer,
             user_agent=user_agent,
-            timestamp=now,
+            timestamp=recorded_at,
         )
         db.add(search)
 
-        if session_id:
-            session = db.get(UserSession, session_id)
-            if session:
-                session.last_seen = now
+        if tracked_session:
+            tracked_session.last_seen = recorded_at
+
+        return search
+
+    @staticmethod
+    def batch_track_searches(
+        db: Session,
+        *,
+        searches: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not searches:
+            return []
+
+        recorded: List[Dict[str, Any]] = []
+        for payload in searches:
+            search = AnalyticsCRUD._record_search(
+                db,
+                search_id=payload.get("search_id"),
+                query=payload["query"],
+                results_count=payload.get("results_count"),
+                session_id=payload.get("session_id"),
+                user_id=payload.get("user_id"),
+                filters=payload.get("filters"),
+                referrer=payload.get("referrer"),
+                user_agent=payload.get("user_agent"),
+                timestamp=payload.get("timestamp"),
+            )
+            recorded.append(
+                {
+                    "search_id": str(search.id),
+                    "query": search.query,
+                    "timestamp": search.timestamp.isoformat() if search.timestamp else None,
+                }
+            )
 
         db.commit()
-        db.refresh(search)
-        return search
+        return recorded
 
     @staticmethod
     def update_search_click(
@@ -190,15 +260,50 @@ class AnalyticsCRUD:
         search_id: str,
         clicked_result_id: str,
         clicked_position: Optional[int] = None,
-    ) -> Optional[SearchQuery]:
+        commit: bool = True,
+    ) -> Optional[Dict[str, Any]]:
         search = db.get(SearchQuery, search_id)
         if not search:
             return None
         search.clicked_result_id = clicked_result_id
         search.clicked_position = clicked_position
+        if commit:
+            db.commit()
+        else:
+            db.flush()
+        return {
+            "search_id": str(search.id),
+            "clicked_result_id": search.clicked_result_id,
+            "clicked_position": search.clicked_position,
+        }
+
+    @staticmethod
+    def batch_update_search_clicks(
+        db: Session,
+        *,
+        updates: Sequence[Dict[str, Any]],
+    ) -> Dict[str, List[Any]]:
+        if not updates:
+            return {"updated": [], "missing": []}
+
+        updated: List[Dict[str, Any]] = []
+        missing: List[str] = []
+
+        for payload in updates:
+            result = AnalyticsCRUD.update_search_click(
+                db,
+                search_id=payload["search_id"],
+                clicked_result_id=payload["clicked_result_id"],
+                clicked_position=payload.get("clicked_position"),
+                commit=False,
+            )
+            if result is None:
+                missing.append(payload["search_id"])
+            else:
+                updated.append(result)
+
         db.commit()
-        db.refresh(search)
-        return search
+        return {"updated": updated, "missing": missing}
 
     # ------------------------------------------------------------------
     # Aggregation analytics
@@ -533,6 +638,17 @@ class AnalyticsCRUD:
             except ValueError:
                 return None
         return None
+
+
+def _coerce_uuid(value: Optional[Any]) -> UUID:
+    if isinstance(value, UUID):
+        return value
+    if value is not None:
+        try:
+            return UUID(str(value))
+        except (TypeError, ValueError):
+            pass
+    return uuid4()
 
 
 def _classify_source(key: str) -> str:
