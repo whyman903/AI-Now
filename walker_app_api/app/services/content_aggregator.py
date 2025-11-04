@@ -59,7 +59,7 @@ class ContentAggregator:
             #{"name": "Microsoft Research", "url": "https://www.microsoft.com/en-us/research/feed/", "category": "ai_ml", "type": "blog"},
             # {"name": "NVIDIA Developer Blog", "url": "https://developer.nvidia.com/blog/feed/", "category": "ai_ml", "type": "blog"},
             #{"name": "Y Combinator Podcast", "url": "https://www.ycombinator.com/blog/feed/", "category": "startup", "type": "podcast"},
-           # {"name": "Sequoia Capital", "url": "https://www.sequoiacap.com/feed/", "category": "startup", "type": "blog"},
+           {"name": "Sequoia Capital", "url": "https://www.sequoiacap.com/feed/", "category": "startup", "type": "blog"},
         ]
 
     def _initialize_youtube_sources(self) -> None:
@@ -77,6 +77,7 @@ class ContentAggregator:
             {"name": "Andrej Karpathy", "channel_id": "UCXUPKJO5MZQN11PqgIvyuvQ", "category": "ai_ml"},
             {"name": "Y Combinator", "channel_id": "UCcefcZRL2oaA_uBNeo5UOWg", "category": "startup"},
             {"name": "Sequoia Capital", "channel_id": "UCWrF0oN6unbXrWsTN7RctTw", "category": "startup"},
+            {"name": "A16Z", "channel_id": "UC9cn0TuPq4dnbTY-CBsm8XA", "category": "ai_ml"}, 
         ]
 
     def _initialize_web_scraper_sources(self) -> None:
@@ -785,7 +786,7 @@ class ContentAggregator:
                     "type": feed_config.get("type", "article"),
                     "title": title,
                     "url": link,
-                    "author": entry.get("author") or feed_config.get("name"),
+                    "author": feed_config.get("name"),
                     "published_at": published_at,
                     "thumbnail_url": thumb,
                     "meta_data": {
