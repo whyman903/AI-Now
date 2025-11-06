@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urljoin
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import func, asc, desc
+from sqlalchemy import func, asc, desc, or_
 from app.db.base import get_db
 from app.db.models import ContentItem
 from app.core.config import settings
+from app.services.source_registry import SOURCES_BY_KEY
 
 _LEGACY_THUMBNAIL_REMAP = {
     "deepseek-logo.png": "/static/images/deepseek-brand.png",
@@ -14,6 +15,8 @@ _LEGACY_THUMBNAIL_REMAP = {
 }
 
 router = APIRouter()
+
+_SOURCE_NAME_TO_KEY = {definition.name.lower(): definition.key for definition in SOURCES_BY_KEY.values()}
 
 TYPE_ALIASES = {
     "article": {"article", "research_lab", "blog", "news"},
@@ -73,6 +76,24 @@ def _resolve_public_url(value: Optional[str]) -> Optional[str]:
 
     return urljoin(base, cleaned.lstrip("/"))
 
+
+def _resolve_source_key(item_dict: Dict[str, Any]) -> Optional[str]:
+    direct = item_dict.get("source_key")
+    if direct:
+        return direct
+    meta = item_dict.get("meta_data")
+    if isinstance(meta, dict):
+        meta_key = meta.get("source_key")
+        if meta_key:
+            return meta_key
+        source_name = meta.get("source_name")
+        if isinstance(source_name, str):
+            return _SOURCE_NAME_TO_KEY.get(source_name.strip().lower())
+    author = item_dict.get("author")
+    if isinstance(author, str):
+        return _SOURCE_NAME_TO_KEY.get(author.strip().lower())
+    return None
+
 @router.get("")
 def get_content(
     limit: int = Query(20, ge=1, le=100),
@@ -82,6 +103,7 @@ def get_content(
     exclude_type: Optional[str] = Query(None),
     order: Optional[str] = Query(None, description="Ordering strategy: 'recent' or 'interleave' (default). For research_paper, rank ordering applies."),
     source: Optional[List[str]] = Query(None, description="Filter by one or more content authors (labs)."),
+    source_keys: Optional[List[str]] = Query(None, alias="sources", description="Filter by one or more source keys."),
     db: Session = Depends(get_db)
 ):
     """
@@ -97,6 +119,23 @@ def get_content(
         normalized_sources = [value.strip() for value in source if value and value.strip()]
         if normalized_sources:
             base_query = base_query.filter(ContentItem.author.in_(normalized_sources))
+    if source_keys:
+        normalized_source_keys = [value.strip() for value in source_keys if value and value.strip()]
+        if normalized_source_keys:
+            fallback_authors = {
+                SOURCES_BY_KEY[key].name
+                for key in normalized_source_keys
+                if key in SOURCES_BY_KEY
+            }
+            predicates = [ContentItem.source_key.in_(normalized_source_keys)]
+            if fallback_authors:
+                normalized_authors = {author.strip() for author in fallback_authors if author.strip()}
+                if normalized_authors:
+                    predicates.append(ContentItem.author.in_(normalized_authors))
+                    predicates.append(
+                        ContentItem.meta_data["source_name"].as_string().in_(list(normalized_authors))
+                    )
+            base_query = base_query.filter(or_(*predicates))
 
     # Filter by content type if specified
     if types:
@@ -149,20 +188,23 @@ def get_content(
     serialized_items = []
     for item in items:
         item_dict = item.__dict__
-        serialized_items.append({
-            "id": item_dict.get("id"),
-            "type": item_dict.get("type"),
-            "title": item_dict.get("title"),
-            "url": item_dict.get("url"),
-        "sourceUrl": item_dict.get("url"),
-        "author": item_dict.get("author"),
-        "publishedAt": _to_iso_utc(item_dict.get("published_at")),
-        "thumbnailUrl": _resolve_public_url(item_dict.get("thumbnail_url")),
-        "metadata": item_dict.get("meta_data"),
-        "clicks": item_dict.get("clicks"),
-        "createdAt": _to_iso_utc(item_dict.get("created_at")),
-        "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
-    })
+        serialized_items.append(
+            {
+                "id": item_dict.get("id"),
+                "type": item_dict.get("type"),
+                "title": item_dict.get("title"),
+                "url": item_dict.get("url"),
+                "sourceUrl": item_dict.get("url"),
+                "author": item_dict.get("author"),
+                "publishedAt": _to_iso_utc(item_dict.get("published_at")),
+                "thumbnailUrl": _resolve_public_url(item_dict.get("thumbnail_url")),
+                "metadata": item_dict.get("meta_data"),
+                "sourceKey": _resolve_source_key(item_dict),
+                "clicks": item_dict.get("clicks"),
+                "createdAt": _to_iso_utc(item_dict.get("created_at")),
+                "updatedAt": _to_iso_utc(item_dict.get("updated_at")),
+            }
+        )
     
     return {
         "items": serialized_items,
@@ -185,6 +227,7 @@ def get_trending_content(
     limit: int = Query(20, ge=1, le=50),
     hours: int = Query(24, ge=1, le=168),
     source: Optional[str] = Query(None, description="Filter by content author."),
+    source_keys: Optional[List[str]] = Query(None, alias="sources", description="Filter by one or more source keys."),
     db: Session = Depends(get_db)
 ):
     """Get trending content from database"""
@@ -195,6 +238,23 @@ def get_trending_content(
 
     if source:
         query = query.filter(ContentItem.author == source)
+    if source_keys:
+        normalized_source_keys = [value.strip() for value in source_keys if value and value.strip()]
+        if normalized_source_keys:
+            fallback_authors = {
+                SOURCES_BY_KEY[key].name
+                for key in normalized_source_keys
+                if key in SOURCES_BY_KEY
+            }
+            predicates = [ContentItem.source_key.in_(normalized_source_keys)]
+            if fallback_authors:
+                normalized_authors = {author.strip() for author in fallback_authors if author.strip()}
+                if normalized_authors:
+                    predicates.append(ContentItem.author.in_(normalized_authors))
+                    predicates.append(
+                        ContentItem.meta_data["source_name"].as_string().in_(list(normalized_authors))
+                    )
+            query = query.filter(or_(*predicates))
 
     items = query.order_by(ContentItem.published_at.desc()).limit(limit).all()
     
@@ -202,20 +262,23 @@ def get_trending_content(
     serialized_items = []
     for item in items:
         item_dict = item.__dict__
-        serialized_items.append({
-            "id": item_dict.get("id"),
-            "type": item_dict.get("type"),
-            "title": item_dict.get("title"),
-            "url": item_dict.get("url"),
-        "sourceUrl": item_dict.get("url"),
-        "author": item_dict.get("author"),
-        "publishedAt": _to_iso_utc(item_dict.get("published_at")),
-        "thumbnailUrl": _resolve_public_url(item_dict.get("thumbnail_url")),
-        "metadata": item_dict.get("meta_data"),
-        "clicks": item_dict.get("clicks"),
-        "createdAt": _to_iso_utc(item_dict.get("created_at")),
-        "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
-    })
+        serialized_items.append(
+            {
+                "id": item_dict.get("id"),
+                "type": item_dict.get("type"),
+                "title": item_dict.get("title"),
+                "url": item_dict.get("url"),
+                "sourceUrl": item_dict.get("url"),
+                "author": item_dict.get("author"),
+                "publishedAt": _to_iso_utc(item_dict.get("published_at")),
+                "thumbnailUrl": _resolve_public_url(item_dict.get("thumbnail_url")),
+                "metadata": item_dict.get("meta_data"),
+                "sourceKey": _resolve_source_key(item_dict),
+                "clicks": item_dict.get("clicks"),
+                "createdAt": _to_iso_utc(item_dict.get("created_at")),
+                "updatedAt": _to_iso_utc(item_dict.get("updated_at")),
+            }
+        )
     
     return {"items": serialized_items}
 
@@ -264,9 +327,10 @@ def get_content_item(
         "sourceUrl": item_dict.get("url"),
         "author": item_dict.get("author"),
         "publishedAt": _to_iso_utc(item_dict.get("published_at")),
-        "thumbnailUrl": item_dict.get("thumbnail_url"),
+        "thumbnailUrl": _resolve_public_url(item_dict.get("thumbnail_url")),
         "metadata": item_dict.get("meta_data"),
+        "sourceKey": _resolve_source_key(item_dict),
         "clicks": item_dict.get("clicks"),
         "createdAt": _to_iso_utc(item_dict.get("created_at")),
-        "updatedAt": _to_iso_utc(item_dict.get("updated_at"))
+        "updatedAt": _to_iso_utc(item_dict.get("updated_at")),
     }

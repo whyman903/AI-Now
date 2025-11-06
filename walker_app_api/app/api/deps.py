@@ -4,13 +4,20 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import HTTPException, Request, status
+import jwt
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.security import decode_access_token
+from app.db import models
+from app.db.base import get_db
 
 logger = logging.getLogger(__name__)
 
 AGGREGATION_TOKEN_HEADER = "X-Aggregation-Token"
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _valid_tokens() -> set[str]:
@@ -72,7 +79,64 @@ def require_aggregation_token(request: Request) -> None:
         )
 
 
+def _resolve_user(
+    credentials: Optional[HTTPAuthorizationCredentials],
+    db: Session,
+) -> Optional[models.User]:
+    if not credentials:
+        return None
+    token = credentials.credentials
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token.",
+        ) from None
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Malformed token payload.",
+        )
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive.",
+        )
+    return user
+
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    db: Session = Depends(get_db),
+) -> models.User:
+    user = _resolve_user(credentials, db)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated.",
+        )
+    return user
+
+
+def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    db: Session = Depends(get_db),
+) -> Optional[models.User]:
+    if not credentials:
+        return None
+    return _resolve_user(credentials, db)
+
+
 __all__ = [
     "AGGREGATION_TOKEN_HEADER",
     "require_aggregation_token",
+    "get_current_user",
+    "get_optional_user",
 ]

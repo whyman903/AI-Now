@@ -7,6 +7,18 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     PUBLIC_BASE_URL: Optional[str] = None
+    ACCESS_TOKEN_AUDIENCE: str = "walker-app"
+    ACCESS_TOKEN_ISSUER: Optional[str] = None
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    REFRESH_TOKEN_COOKIE_NAME: str = "walker_refresh_token"
+    AUTH_COOKIE_DOMAIN: Optional[str] = None
+    AUTH_COOKIE_SECURE: bool = True
+    AUTH_COOKIE_SAMESITE: str = "none"
+    AUTH_COOKIE_PATH: str = "/"
+    AUTH_REFRESH_TOKEN_BYTES: int = 48
+    JWT_SECRET_KEY: str = "change-me"
+    JWT_ALGORITHM: str = "HS256"
     
     # Database
     DATABASE_URL: str

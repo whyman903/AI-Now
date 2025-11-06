@@ -179,9 +179,10 @@ async def health_check():
     # Check database
     try:
         from app.db.base import SessionLocal
+        from sqlalchemy import text
         db = SessionLocal()
         try:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             health_status["services"]["database"] = "up"
         finally:
             db.close()

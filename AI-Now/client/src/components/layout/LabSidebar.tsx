@@ -1,7 +1,10 @@
-import { useMemo, useState, type FocusEvent } from "react";
-import { Loader2, Filter, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState, type FocusEvent, type FormEvent } from "react";
+import { Loader2, Filter, ChevronLeft, ChevronRight, LogIn, LogOut, Settings } from "lucide-react";
+import { Link } from "wouter";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
 
 interface LabFilter {
   id: string;
@@ -45,7 +48,15 @@ export function LabSidebar({
   collapsed,
   onToggleCollapse,
 }: LabSidebarProps) {
+  const auth = useAuth();
+  const { clearError } = auth;
   const [isHovered, setIsHovered] = useState(false);
+  const [showAuthForm, setShowAuthForm] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
   const hasLabs = labs.length > 0;
   const showContentTypeSection = contentTypesLoading || contentTypes.length > 0;
   const selectionSummary = useMemo(() => {
@@ -75,6 +86,46 @@ export function LabSidebar({
     }
     onToggleCollapse();
   };
+
+  const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalError(null);
+    clearError();
+
+    if (!email.trim() || !password.trim()) {
+      setLocalError("Email and password are required.");
+      return;
+    }
+
+    const success =
+      authMode === "signin"
+        ? await auth.login(email.trim(), password)
+        : await auth.register(email.trim(), password, displayName.trim() || null);
+
+    if (success) {
+      setShowAuthForm(false);
+      setEmail("");
+      setPassword("");
+      setDisplayName("");
+    }
+  };
+
+  const handleLogout = async () => {
+    await auth.logout();
+    setShowAuthForm(false);
+  };
+
+  const authError = localError || auth.authError;
+  const isAuthBusy = auth.isAuthenticating;
+  const isGuest = !auth.user;
+
+  useEffect(() => {
+    if (!isGuest) {
+      setShowAuthForm(false);
+      setLocalError(null);
+      clearError();
+    }
+  }, [isGuest, clearError]);
 
   return (
     <aside
@@ -127,6 +178,136 @@ export function LabSidebar({
 
       {isExpanded && (
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
+          <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4">
+            {auth.isLoading ? (
+              <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Checking session…
+              </div>
+            ) : isGuest ? (
+              <>
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Sign in to personalize
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Save your favorite labs and quickly revisit them across devices.
+                  </p>
+                </div>
+
+                {showAuthForm ? (
+                  <form className="space-y-2" onSubmit={handleAuthSubmit}>
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      required
+                    />
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Password"
+                      autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+                      required
+                    />
+                    {authMode === "signup" && (
+                      <Input
+                        type="text"
+                        value={displayName}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        placeholder="Display name (optional)"
+                        autoComplete="name"
+                      />
+                    )}
+                    {authError && (
+                      <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                        {authError}
+                      </div>
+                    )}
+                    <Button type="submit" className="w-full" disabled={isAuthBusy}>
+                      {isAuthBusy ? (
+                        <span className="inline-flex items-center gap-2 text-xs">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          {authMode === "signin" ? "Signing in…" : "Creating account…"}
+                        </span>
+                      ) : authMode === "signin" ? (
+                        "Sign in"
+                      ) : (
+                        "Create account"
+                      )}
+                    </Button>
+                    <button
+                      type="button"
+                      className="w-full text-center text-xs text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline"
+                      onClick={() => {
+                        setAuthMode(authMode === "signin" ? "signup" : "signin");
+                        setLocalError(null);
+                        clearError();
+                      }}
+                      disabled={isAuthBusy}
+                    >
+                      {authMode === "signin"
+                        ? "Need an account? Sign up"
+                        : "Already registered? Sign in"}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="space-y-3">
+                    <Button
+                      className="w-full"
+                      onClick={() => {
+                        setShowAuthForm(true);
+                        setAuthMode("signin");
+                        setLocalError(null);
+                        clearError();
+                      }}
+                    >
+                      <LogIn className="mr-2 h-4 w-4" />
+                      Sign in
+                    </Button>
+                    <button
+                      type="button"
+                      className="w-full text-center text-xs text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline"
+                      onClick={() => {
+                        setShowAuthForm(true);
+                        setAuthMode("signup");
+                        setLocalError(null);
+                        clearError();
+                      }}
+                    >
+                      Create account instead
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Signed in</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {auth.user?.displayName || auth.user?.email}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Your source preferences are saved to your account.
+                  </p>
+                </div>
+                <Link href="/manage-sources" className="block">
+                  <Button variant="default" size="sm" className="w-full inline-flex items-center gap-2 justify-center">
+                    <Settings className="h-4 w-4" />
+                    Manage Sources
+                  </Button>
+                </Link>
+                <Button variant="outline" size="sm" onClick={handleLogout} className="w-full inline-flex items-center gap-2 justify-center">
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </Button>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Selection</p>
             <p className="text-sm font-medium text-foreground">{selectionSummary}</p>

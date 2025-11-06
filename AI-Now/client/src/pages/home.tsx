@@ -8,6 +8,7 @@ import { Plus, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { trackSearch } from "@/lib/analytics";
 import { ensureSessionRegistered } from "@/lib/session";
+import { useAuth } from "@/hooks/useAuth";
 
 interface LabFilter {
   id: string;
@@ -24,7 +25,22 @@ interface ContentTypeFilter {
 
 const API_BASE = import.meta.env.VITE_PYTHON_API_URL || "http://localhost:8000";
 
+interface SourcePreference {
+  sourceKey: string;
+  enabled: boolean;
+}
+
+interface PreferencesResponse {
+  preferences: SourcePreference[];
+}
+
 export default function Home() {
+  const { user, fetchWithAuth } = useAuth();
+  const debugLog = (...args: Parameters<typeof console.debug>) => {
+    if (import.meta.env.DEV) {
+      console.debug(...args);
+    }
+  };
   const [selectedLabs, setSelectedLabs] = useState<LabFilter[]>([]);
   const [selectedContentTypes, setSelectedContentTypes] = useState<ContentTypeFilter[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -44,6 +60,50 @@ export default function Home() {
     },
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: preferencesData } = useQuery<PreferencesResponse>({
+    queryKey: ["user-preferences"],
+    queryFn: async () => {
+      const response = await fetchWithAuth(`${API_BASE}/api/v1/users/me/preferences/sources`, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    },
+    enabled: !!user,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  const enabledSourceKeys = useMemo(() => {
+    if (!user) {
+      debugLog("Anonymous user - no source filtering");
+      return null;
+    }
+    
+    if (!preferencesData?.preferences) {
+      debugLog("Logged in but preferences not loaded yet");
+      return null;
+    }
+    
+    const enabled = preferencesData.preferences
+      .filter((pref) => pref.enabled)
+      .map((pref) => pref.sourceKey);
+    
+    debugLog("User preferences loaded", {
+      totalSources: preferencesData.preferences.length,
+      enabledCount: enabled.length,
+      enabledSources: enabled,
+    });
+    
+    return enabled;
+  }, [user, preferencesData]);
 
   const selectedAuthors = useMemo(
     () => selectedLabs.map((lab) => lab.label),
@@ -121,10 +181,11 @@ export default function Home() {
       "content",
       selectedAuthors.length ? [...selectedAuthors].sort().join("|") : "",
       selectedTypeValues.length ? [...selectedTypeValues].sort().join("|") : "",
-      keywordFilter.trim(), // Include search term in query key
+      keywordFilter.trim(),
+      user?.id || "anonymous",
+      enabledSourceKeys === null ? "no-filter" : enabledSourceKeys.length ? [...enabledSourceKeys].sort().join("|") : "none",
     ],
     queryFn: async ({ pageParam = 0 }) => {
-      // When searching, load the maximum allowed batch (100 items) to improve search results
       const LIMIT = keywordFilter.trim() ? 100 : 48;
       const params = new URLSearchParams({
         limit: LIMIT.toString(),
@@ -132,8 +193,23 @@ export default function Home() {
       });
       selectedAuthors.forEach((author) => params.append("source", author));
       selectedTypeValues.forEach((type) => params.append("types", type));
+      
+      if (user && enabledSourceKeys !== null) {
+        if (enabledSourceKeys.length > 0) {
+          enabledSourceKeys.forEach((sourceKey) => params.append("sources", sourceKey));
+          debugLog("Applying source filter", enabledSourceKeys);
+        } else {
+          params.append("sources", "__none__");
+          debugLog("User disabled all sources");
+        }
+      } else {
+        debugLog("No source filtering (anonymous or loading)");
+      }
 
-      const response = await fetch(`${API_BASE}/api/v1/content?${params.toString()}`);
+      const url = `${API_BASE}/api/v1/content?${params.toString()}`;
+      debugLog("Fetching content", url);
+
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`${response.status}: ${response.statusText}`);
       }
@@ -152,13 +228,28 @@ export default function Home() {
   });
 
   const { data: papersData } = useQuery({
-    queryKey: ["research_papers"],
+    queryKey: [
+      "research_papers",
+      user?.id || "anonymous",
+      enabledSourceKeys === null ? "no-filter" : enabledSourceKeys.length ? [...enabledSourceKeys].sort().join("|") : "none",
+    ],
     queryFn: async () => {
       const params = new URLSearchParams({
         content_type: "research_paper",
         limit: "10",
         offset: "0",
       });
+      
+      if (user && enabledSourceKeys !== null) {
+        if (enabledSourceKeys.length > 0) {
+          enabledSourceKeys.forEach((sourceKey) => params.append("sources", sourceKey));
+          debugLog("Applying source filter to research papers", enabledSourceKeys);
+        } else {
+          params.append("sources", "__none__");
+          debugLog("User disabled all sources for papers");
+        }
+      }
+      
       const response = await fetch(`${API_BASE}/api/v1/content?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`${response.status}: ${response.statusText}`);
@@ -234,10 +325,8 @@ export default function Home() {
 
   const isFiltering = isLoading || isFetching || isFetchingNextPage;
 
-  // Auto-load more pages when searching to improve search results
   useEffect(() => {
     if (keywordFilter.trim() && hasNextPage && !isFetchingNextPage && !isLoading) {
-      // If we have very few filtered results and more pages are available, auto-load
       if (filteredContent.length < 20) {
         fetchNextPage();
       }

@@ -68,19 +68,22 @@ def create_tables():
 
 def _drop_legacy_user_tables() -> None:
     """Remove legacy user-centric tables that are no longer required."""
-    legacy_tables = [
-        "user_bookmarks",
-        "bookmark_folders",
-        "user_interactions",
-        "users",
-    ]
+    legacy_tables = ["user_bookmarks", "bookmark_folders", "user_interactions", "users"]
 
     try:
         with engine.begin() as conn:
-            existing = set(inspect(conn).get_table_names())
+            inspector = inspect(conn)
+            existing = set(inspector.get_table_names())
             for table in legacy_tables:
                 if table not in existing:
                     continue
+
+                if table == "users":
+                    columns = {c["name"] for c in inspector.get_columns("users")}
+                    # Keep the modern users table that includes auth metadata
+                    if {"auth_provider", "provider_user_id", "password_hash"}.issubset(columns):
+                        continue
+
                 if conn.dialect.name == "postgresql":
                     conn.execute(text(f"DROP TABLE IF EXISTS {table} CASCADE"))
                 else:

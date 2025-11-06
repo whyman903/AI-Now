@@ -1,17 +1,6 @@
 """Database models for the content aggregation service."""
 
-from sqlalchemy import (
-    Column,
-    String,
-    Text,
-    DateTime,
-    JSON,
-    Index,
-    UniqueConstraint,
-    Integer,
-    ForeignKey,
-    Float,
-)
+from sqlalchemy import Column, String, Text, DateTime, JSON, Index, UniqueConstraint, Integer, ForeignKey, Float, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -31,6 +20,7 @@ class ContentItem(Base):
     author = Column(Text)
     published_at = Column(DateTime, index=True)
     thumbnail_url = Column(Text)
+    source_key = Column(String(100), index=True)
     meta_data = Column("metadata", JSON)
     clicks = Column(Integer, nullable=False, server_default="0")
     created_at = Column(DateTime, server_default=func.now())
@@ -165,4 +155,77 @@ class AggregationRunSource(Base):
     __table_args__ = (
         Index("ix_aggregation_run_sources_run_id", "run_id"),
         Index("ix_aggregation_run_sources_source_type", "source_type"),
+    )
+
+
+class User(Base):
+    """Registered user with optional first-party credentials."""
+
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    email = Column(String(320), nullable=False, index=True)
+    display_name = Column(String(120))
+    auth_provider = Column(String(50), nullable=False, default="local")
+    provider_user_id = Column(String(255))
+    password_hash = Column(String(512))
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    email_verified_at = Column(DateTime)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    last_login_at = Column(DateTime)
+
+    source_preferences = relationship("UserSourcePreference", back_populates="user", cascade="all, delete-orphan", lazy="selectin")
+    refresh_tokens = relationship(
+        "UserRefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("auth_provider", "provider_user_id", name="uq_users_provider_mapping"),
+        UniqueConstraint("email", name="uq_users_email"),
+    )
+
+
+class UserSourcePreference(Base):
+    """Source selection preferences for a user."""
+
+    __tablename__ = "user_source_preferences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_key = Column(String(100), nullable=False)
+    enabled = Column(Boolean, nullable=False, server_default="true")
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="source_preferences")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "source_key", name="uq_user_source_preferences_user_source"),
+    )
+
+
+class UserRefreshToken(Base):
+    """Long-lived refresh token for rotating session management."""
+
+    __tablename__ = "user_refresh_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(128), nullable=False, unique=True)
+    issued_at = Column(DateTime, nullable=False, server_default=func.now())
+    expires_at = Column(DateTime, nullable=False)
+    last_used_at = Column(DateTime)
+    revoked_at = Column(DateTime)
+    user_agent = Column(String(512))
+    ip_address = Column(String(64))
+    extra_data = Column("metadata", JSON)
+
+    user = relationship("User", back_populates="refresh_tokens")
+
+    __table_args__ = (
+        Index("ix_user_refresh_tokens_user_id", "user_id"),
+        Index("ix_user_refresh_tokens_active", "user_id", "revoked_at"),
     )

@@ -5,13 +5,16 @@ import { queryClient } from "@/lib/queryClient.ts";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
+import { AuthProvider } from "@/context/AuthContext";
 import Home from "@/pages/home";
+import ManageSources from "@/pages/manage-sources";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/manage-sources" component={ManageSources} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -22,8 +25,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
-          <Toaster />
-          <Router />
+          <AuthProvider>
+            <Toaster />
+            <Router />
+          </AuthProvider>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

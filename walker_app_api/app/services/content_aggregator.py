@@ -30,6 +30,7 @@ from app.services.aggregation_sources import (
     thinkingmachines_agg,
     xai_agg,
 )
+from app.services.source_registry import SOURCES_BY_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -51,51 +52,60 @@ class ContentAggregator:
         self._initialize_youtube_sources()
         self._initialize_web_scraper_sources()
 
+    def _source_config(self, source_key: str, **overrides: Any) -> Dict[str, Any]:
+        definition = SOURCES_BY_KEY.get(source_key)
+        if not definition:
+            raise ValueError(f"Unknown source key '{source_key}'")
+        config: Dict[str, Any] = {
+            "source_key": definition.key,
+            "name": definition.name,
+            "category": definition.category,
+        }
+        if definition.content_types and "type" not in overrides:
+            config["type"] = definition.content_types[0]
+        config.update(overrides)
+        return config
+
     def _initialize_rss_sources(self) -> None:
         self.rss_sources: List[Dict[str, Any]] = [
-            # {"name": "OpenAI Blog", "url": "https://openai.com/blog/rss.xml", "category": "ai_ml", "type": "blog"},
-           # {"name": "Google AI Blog", "url": "https://research.google/blog/rss", "category": "ai_ml", "type": "blog"},
-            {"name": "Google DeepMind", "url": "https://deepmind.google/blog/rss.xml", "category": "ai_ml", "type": "research_lab"},
-            #{"name": "Microsoft Research", "url": "https://www.microsoft.com/en-us/research/feed/", "category": "ai_ml", "type": "blog"},
-            # {"name": "NVIDIA Developer Blog", "url": "https://developer.nvidia.com/blog/feed/", "category": "ai_ml", "type": "blog"},
-            #{"name": "Y Combinator Podcast", "url": "https://www.ycombinator.com/blog/feed/", "category": "startup", "type": "podcast"},
-           {"name": "Sequoia Capital", "url": "https://www.sequoiacap.com/feed/", "category": "startup", "type": "blog"},
+            self._source_config(
+                "rss_google_deepmind",
+                url="https://deepmind.google/blog/rss.xml",
+            ),
+            self._source_config(
+                "rss_sequoia_capital",
+                url="https://www.sequoiacap.com/feed/",
+            ),
         ]
 
     def _initialize_youtube_sources(self) -> None:
         self.youtube_channels: List[Dict[str, Any]] = [
-            # {"name": "3Blue1Brown", "channel_id": "UCYO_jab_esuFRV4b17AJtAw", "category": "ai_ml"},
-            # {"name": "Two Minute Papers", "channel_id": "UCbfYPyITQ-7l4upoX8nvctg", "category": "ai_ml"},
-            # {"name": "Yannic Kilcher", "channel_id": "UCZHmQk67mSJgfCCTn7xBfew", "category": "ai_ml"},
-            # {"name": "AI Explained", "channel_id": "UCNJ1Ymd5yFuUPtn21xtRbbw", "category": "ai_ml"},
-            # {"name": "Machine Learning Street Talk", "channel_id": "UCMLtBahI5DMrt0NPvDSoIRQ", "category": "ai_ml"},
-            #{"name": "Lex Fridman", "channel_id": "UCSHZKyawb77ixDdsGog4iWA", "category": "ai_ml"},
-            {"name": "OpenAI", "channel_id": "UCXZCJLdBC09xxGZ6gcdrc6A", "category": "ai_ml"},
-            {"name": "Anthropic", "channel_id": "UCrDwWp7EBBv4NwvScIpBDOA", "category": "ai_ml"},
-            {"name": "AI Engineer", "channel_id": "UCLKPca3kwwd-B59HNr-_lvA", "category": "ai_ml"},
-            {"name": "Google DeepMind", "channel_id": "UCP7jMXSY2xbc3KCAE0MHQ-A", "category": "ai_ml"},
-            {"name": "Andrej Karpathy", "channel_id": "UCXUPKJO5MZQN11PqgIvyuvQ", "category": "ai_ml"},
-            {"name": "Y Combinator", "channel_id": "UCcefcZRL2oaA_uBNeo5UOWg", "category": "startup"},
-            {"name": "Sequoia Capital", "channel_id": "UCWrF0oN6unbXrWsTN7RctTw", "category": "startup"},
-            {"name": "A16Z", "channel_id": "UC9cn0TuPq4dnbTY-CBsm8XA", "category": "ai_ml"}, 
+            self._source_config("yt_openai", channel_id="UCXZCJLdBC09xxGZ6gcdrc6A"),
+            self._source_config("yt_anthropic", channel_id="UCrDwWp7EBBv4NwvScIpBDOA"),
+            self._source_config("yt_ai_engineer", channel_id="UCLKPca3kwwd-B59HNr-_lvA"),
+            self._source_config("yt_google_deepmind", channel_id="UCP7jMXSY2xbc3KCAE0MHQ-A"),
+            self._source_config("yt_andrej_karpathy", channel_id="UCXUPKJO5MZQN11PqgIvyuvQ"),
+            self._source_config("yt_y_combinator", channel_id="UCcefcZRL2oaA_uBNeo5UOWg"),
+            self._source_config("yt_sequoia_capital", channel_id="UCWrF0oN6unbXrWsTN7RctTw"),
+            self._source_config("yt_a16z", channel_id="UC9cn0TuPq4dnbTY-CBsm8XA"),
         ]
 
     def _initialize_web_scraper_sources(self) -> None:
         self.web_scraper_sources: List[Dict[str, Any]] = [
-            {"name": "Anthropic", "category": "ai_ml", "scrape_func": anthropic_agg.scrape},
-            {"name": "DeepSeek", "category": "ai_ml", "scrape_func": deepseek_agg.scrape},
-            {"name": "xAI", "category": "ai_ml", "scrape_func": xai_agg.scrape},
-            {"name": "Qwen", "category": "ai_ml", "scrape_func": qwen_agg.scrape},
-            {"name": "Moonshot", "category": "ai_ml", "scrape_func": moonshot_agg.scrape},
-            {"name": "OpenAI", "category": "ai_ml", "scrape_func": openai_agg.scrape},
-            {"name": "Perplexity", "category": "ai_ml", "scrape_func": perplexity_agg.scrape},
-            {
-                "name": "Thinking Machines",
-                "category": "ai_ml",
-                "scrape_func": thinkingmachines_agg.scrape,
-            },
-            {"name": "Hugging Face Papers", "category": "ai_ml", "scrape_func": huggingface_agg.scrape_trending_papers},
-            {"name": "Tavily AI Trends", "category": "ai_ml", "scrape_func": tavily_trending.scrape_async},
+            self._source_config("scrape_anthropic", scrape_func=anthropic_agg.scrape),
+            self._source_config("scrape_deepseek", scrape_func=deepseek_agg.scrape),
+            self._source_config("scrape_xai", scrape_func=xai_agg.scrape),
+            self._source_config("scrape_qwen", scrape_func=qwen_agg.scrape),
+            self._source_config("scrape_moonshot", scrape_func=moonshot_agg.scrape),
+            self._source_config("scrape_openai", scrape_func=openai_agg.scrape),
+            self._source_config("scrape_perplexity", scrape_func=perplexity_agg.scrape),
+            self._source_config("scrape_thinking_machines", scrape_func=thinkingmachines_agg.scrape),
+            self._source_config(
+                "scrape_hugging_face_papers",
+                scrape_func=huggingface_agg.scrape_trending_papers,
+                type="research_paper",
+            ),
+            self._source_config("scrape_tavily_trends", scrape_func=tavily_trending.scrape_async),
         ]
 
 
@@ -205,11 +215,9 @@ class ContentAggregator:
         logger.info("Running targeted scraper batch with %s sources", len(scrapers))
         start = time.perf_counter()
         
-        # Separate slow scrapers to run in parallel with batches
         slow_scrapers = [s for s in scrapers if "Tavily" in s["name"]]
         fast_scrapers = [s for s in scrapers if "Tavily" not in s["name"]]
         
-        # Start slow scrapers as background tasks immediately
         slow_tasks: List[asyncio.Task[List[Dict[str, Any]]]] = []
         for source in slow_scrapers:
             logger.info(
@@ -218,7 +226,6 @@ class ContentAggregator:
             )
             slow_tasks.append(asyncio.create_task(self._process_web_scraper(source)))
         
-        # Process fast scrapers in parallel batches
         batch_size = 3
         total_batches = (len(fast_scrapers) + batch_size - 1) // batch_size if fast_scrapers else 0
         for i in range(0, len(fast_scrapers), batch_size):
@@ -261,7 +268,6 @@ class ContentAggregator:
                     stats.get("items_added", 0),
                 )
         
-        # Wait for slow scrapers to complete (running in parallel)
         if slow_tasks:
             logger.info(
                 "Waiting for slow scrapers to complete: %s",
@@ -378,7 +384,6 @@ class ContentAggregator:
         start = time.perf_counter()
         items_processed = items_added = items_with_thumbnails = items_updated = 0
 
-        # Process channels in parallel batches
         batch_size = 4
         logger.info("Total YouTube channels queued: %s", len(self.youtube_channels))
         total_batches = (len(self.youtube_channels) + batch_size - 1) // batch_size if self.youtube_channels else 0
@@ -500,7 +505,17 @@ class ContentAggregator:
                     published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc).replace(tzinfo=None)
                 except Exception:
                     pass
-
+            source_key = channel.get("source_key")
+            meta = {
+                "source_name": channel["name"],
+                "category": channel["category"],
+                "video_id": video_id,
+                "channel_id": channel["channel_id"],
+                "duration_seconds": duration_seconds,
+                "extraction_method": "youtube_rss",
+            }
+            if source_key:
+                meta["source_key"] = source_key
             channel_items.append(
                 {
                     "type": "youtube_video",
@@ -509,14 +524,8 @@ class ContentAggregator:
                     "author": channel["name"],
                     "published_at": published_at,
                     "thumbnail_url": thumb,
-                    "meta_data": {
-                        "source_name": channel["name"],
-                        "category": channel["category"],
-                        "video_id": video_id,
-                        "channel_id": channel["channel_id"],
-                        "duration_seconds": duration_seconds,
-                        "extraction_method": "youtube_rss",
-                    },
+                    "source_key": source_key,
+                    "meta_data": meta,
                 }
             )
         elapsed = time.perf_counter() - start
@@ -575,7 +584,6 @@ class ContentAggregator:
         start = time.perf_counter()
         items_processed = items_added = items_with_thumbnails = items_updated = 0
 
-        # Separate slow scrapers (like Tavily AI agent) to run in parallel with batches
         slow_scrapers = [s for s in self.web_scraper_sources if "Tavily" in s["name"]]
         fast_scrapers = [s for s in self.web_scraper_sources if "Tavily" not in s["name"]]
         logger.info(
@@ -588,7 +596,6 @@ class ContentAggregator:
             len(slow_scrapers),
         )
         
-        # Start slow scrapers as background tasks immediately (they run in parallel with everything)
         slow_tasks: List[asyncio.Task[List[Dict[str, Any]]]] = []
         for source in slow_scrapers:
             logger.info(
@@ -597,8 +604,7 @@ class ContentAggregator:
             )
             slow_tasks.append(asyncio.create_task(self._process_web_scraper(source)))
         
-        # Process fast scrapers in parallel batches
-        batch_size = 3  # Smaller batch for resource-intensive Selenium scrapers
+        batch_size = 3
         total_batches = (len(fast_scrapers) + batch_size - 1) // batch_size if fast_scrapers else 0
         for i in range(0, len(fast_scrapers), batch_size):
             batch = fast_scrapers[i : i + batch_size]
@@ -640,7 +646,6 @@ class ContentAggregator:
                     stats.get("items_added", 0),
                 )
         
-        # Now wait for slow scrapers to complete (they've been running in parallel this whole time)
         if slow_tasks:
             logger.info(
                 "Waiting for slow scrapers to complete: %s",
@@ -698,12 +703,18 @@ class ContentAggregator:
             raise
 
         normalized: List[Dict[str, Any]] = []
+        source_key = source.get("source_key")
         for item in raw_items or []:
             if not item or not item.get("title") or not item.get("url"):
                 continue
             published_at = item.get("published_at") or self._utcnow_naive()
             if isinstance(published_at, datetime):
                 published_at = self._to_utc_naive(published_at)
+            meta_data = dict(item.get("meta_data", {}) or {})
+            if source_key:
+                meta_data.setdefault("source_key", source_key)
+            meta_data.setdefault("source_name", source.get("name"))
+            meta_data.setdefault("category", source.get("category"))
             normalized.append(
                 {
                     "type": item.get("type", "article"),
@@ -712,7 +723,8 @@ class ContentAggregator:
                     "author": item.get("author"),
                     "published_at": published_at,
                     "thumbnail_url": item.get("thumbnail_url"),
-                    "meta_data": item.get("meta_data", {}),
+                    "source_key": source_key,
+                    "meta_data": meta_data,
                 }
             )
 
@@ -781,6 +793,15 @@ class ContentAggregator:
             if media and isinstance(media, list) and media[0].get("url"):
                 thumb = media[0]["url"]
 
+            source_key = feed_config.get("source_key")
+            meta = {
+                "source_name": feed_config.get("name"),
+                "category": feed_config.get("category"),
+                "extraction_method": "rss",
+                "summary": entry.get("summary"),
+            }
+            if source_key:
+                meta["source_key"] = source_key
             items.append(
                 {
                     "type": feed_config.get("type", "article"),
@@ -789,12 +810,8 @@ class ContentAggregator:
                     "author": feed_config.get("name"),
                     "published_at": published_at,
                     "thumbnail_url": thumb,
-                    "meta_data": {
-                        "source_name": feed_config.get("name"),
-                        "category": feed_config.get("category"),
-                        "extraction_method": "rss",
-                        "summary": entry.get("summary"),
-                    },
+                    "source_key": source_key,
+                    "meta_data": meta,
                 }
             )
         elapsed = time.perf_counter() - start
@@ -838,6 +855,9 @@ class ContentAggregator:
             if not published_at:
                 published_at = self._utcnow_naive()
             meta_data = dict(item.get("meta_data", {}) or {})
+            source_key = item.get("source_key") or meta_data.get("source_key")
+            if source_key:
+                meta_data["source_key"] = source_key
             original_url = meta_data.get("original_url")
             if original_url:
                 canonical_original = self.canonicalize(original_url)
@@ -851,6 +871,7 @@ class ContentAggregator:
                     "author": item.get("author"),
                     "published_at": published_at,
                     "thumbnail_url": item.get("thumbnail_url"),
+                    "source_key": source_key,
                     "meta_data": meta_data,
                 }
             )
@@ -898,6 +919,7 @@ class ContentAggregator:
                     existing = existing_by_original.get(original_key)
                 if existing:
                     changed = False
+                    payload_source_key = payload.get("source_key")
                     if existing.url != payload["url"]:
                         old_url = existing.url
                         canonical_old_url = self.canonicalize(old_url) if old_url else None
@@ -905,6 +927,9 @@ class ContentAggregator:
                             del existing_by_url[canonical_old_url]
                         existing.url = payload["url"]
                         existing_by_url[payload["url"]] = existing
+                        changed = True
+                    if payload_source_key and existing.source_key != payload_source_key:
+                        existing.source_key = payload_source_key
                         changed = True
                     new_published = payload.get("published_at")
                     if new_published and (
@@ -922,6 +947,8 @@ class ContentAggregator:
                     if meta:
                         merged_meta = dict(existing.meta_data or {})
                         merged_meta.update(meta)
+                        if payload_source_key:
+                            merged_meta.setdefault("source_key", payload_source_key)
                         canonical_original = merged_meta.get("original_url")
                         if isinstance(canonical_original, str) and canonical_original:
                             canonical_original = self.canonicalize(canonical_original)
@@ -1029,7 +1056,6 @@ class ContentAggregator:
                 continue
             dt = self._coerce_datetime(meta[key])
             if dt:
-                # Store normalized ISO string back so we keep the useful metadata
                 meta[key] = dt.isoformat()
                 return dt
         return None
