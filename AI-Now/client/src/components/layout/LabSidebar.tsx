@@ -191,7 +191,7 @@ export function LabSidebar({
                     Sign in to personalize
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Save your favorite labs and quickly revisit them across devices.
+                    Customize which sources you want to see in your feed!
                   </p>
                 </div>
 

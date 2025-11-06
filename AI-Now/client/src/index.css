@@ -48,9 +48,9 @@
 }
 
 @layer base {
-  html {
+  /* html {
     font-size: 90%;
-  }
+  } */
 
   * {
     @apply border-border;
