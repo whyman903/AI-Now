@@ -16,4 +16,5 @@ def scrape(headless: bool = True) -> List[Dict[str, Any]]:
         podcast_name=PODCAST_NAME,
         author_name=AUTHOR_NAME,
         headless=headless,
+        category="learning",
     )

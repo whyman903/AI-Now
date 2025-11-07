@@ -372,7 +372,8 @@ def scrape_apple_podcast(
     podcast_url: str,
     podcast_name: str,
     author_name: str,
-    headless: bool = True
+    headless: bool = True,
+    category: str = "learning"
 ) -> List[Dict[str, Any]]:
     """
     Generic scraper for any Apple Podcasts show.
@@ -382,6 +383,7 @@ def scrape_apple_podcast(
         podcast_name: Display name of the podcast
         author_name: Podcast author/host name
         headless: Whether to run browser in headless mode
+        category: Content category for the podcast
     
     Returns:
         List of normalized podcast episode dictionaries
@@ -419,7 +421,7 @@ def scrape_apple_podcast(
                 item_type="podcast",
                 source_name=podcast_name,
                 extraction_method="selenium",
-                extra_meta=extra_meta,
+                extra_meta={**extra_meta, "category": category},
             )
         )
     
