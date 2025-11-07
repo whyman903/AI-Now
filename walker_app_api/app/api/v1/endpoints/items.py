@@ -6,7 +6,7 @@ from app.services.source_registry import SourceDefinition, list_sources, SOURCES
 
 LAB_FILTER_KEYS = {
     "scrape_anthropic",
-    "rss_google_deepmind",
+    "scrape_google_deepmind",
     "scrape_openai",
     "scrape_xai",
     "scrape_qwen",

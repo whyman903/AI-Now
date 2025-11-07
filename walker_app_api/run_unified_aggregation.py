@@ -19,7 +19,8 @@ SCRAPER_MAP = {
     'anthropic': 'Anthropic', 'deepseek': 'DeepSeek', 'xai': 'xAI', 'qwen': 'Qwen',
     'moonshot': 'Moonshot', 'openai': 'OpenAI', 'perplexity': 'Perplexity',
     'thinking_machines': 'Thinking Machines', 'huggingface': 'Hugging Face Papers',
-    'tavily_trending': 'Tavily AI Trends',
+    'tavily_trending': 'Tavily AI Trends', 'nvidia_podcast': 'NVIDIA AI Podcast',
+    'dwarkesh_podcast': 'Dwarkesh Podcast',
 }
 
 async def main():

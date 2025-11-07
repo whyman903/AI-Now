@@ -161,6 +161,24 @@
   border-color: hsl(175, 30%, 28%);
 }
 
+/* Article Cards - Podcast */
+.article-card-podcast {
+  background-color: hsl(270, 50%, 92%);
+  border-color: hsl(270, 45%, 80%);
+  box-shadow: 0 2px 6px rgba(147, 51, 234, 0.1);
+  transition: all 0.3s ease-in-out;
+}
+
+.article-card-podcast:hover {
+  border-color: hsl(270, 50%, 70%);
+  box-shadow: 0 8px 20px rgba(147, 51, 234, 0.2);
+}
+
+.dark .article-card-podcast {
+  background-color: hsl(270, 40%, 20%);
+  border-color: hsl(270, 35%, 30%);
+}
+
 /* Article Cards - Default */
 .article-card-default {
   background-color: hsl(210, 65%, 93%);

@@ -136,6 +136,8 @@ function getCardStyleClasses(isAiTrends: boolean, type: string): string {
   switch (type) {
     case "youtube_video":
       return "article-card-youtube";
+    case "podcast":
+      return "article-card-podcast";
     default:
       return "article-card-default";
   }

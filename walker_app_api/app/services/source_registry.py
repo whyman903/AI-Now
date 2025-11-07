@@ -19,13 +19,6 @@ class SourceDefinition:
 _SOURCES: List[SourceDefinition] = [
     # RSS sources
     SourceDefinition(
-        key="rss_google_deepmind",
-        name="Google DeepMind",
-        channel="rss",
-        category="frontier_model",
-        content_types=["research_lab"],
-    ),
-    SourceDefinition(
         key="rss_sequoia_capital",
         name="Sequoia Capital",
         channel="rss",
@@ -133,6 +126,13 @@ _SOURCES: List[SourceDefinition] = [
         content_types=["article", "research_lab"],
     ),
     SourceDefinition(
+        key="scrape_google_deepmind",
+        name="Google DeepMind",
+        channel="scraper",
+        category="frontier_model",
+        content_types=["research_lab", "article"],
+    ),
+    SourceDefinition(
         key="scrape_perplexity",
         name="Perplexity",
         channel="scraper",
@@ -159,6 +159,22 @@ _SOURCES: List[SourceDefinition] = [
         channel="scraper",
         category="options",
         content_types=["article"],
+    ),
+    SourceDefinition(
+        key="scrape_nvidia_podcast",
+        name="NVIDIA AI Podcast",
+        channel="scraper",
+        category="learning",
+        content_types=["podcast"],
+        description="The NVIDIA AI Podcast explores how the latest technologies are shaping our world",
+    ),
+    SourceDefinition(
+        key="scrape_dwarkesh_podcast",
+        name="Dwarkesh Podcast",
+        channel="scraper",
+        category="learning",
+        content_types=["podcast"],
+        description="Deeply researched interviews with leading thinkers",
     ),
 ]
 

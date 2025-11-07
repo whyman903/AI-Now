@@ -20,9 +20,12 @@ from app.db.base import SessionLocal
 from app.db.models import ContentItem, FeedState
 from app.services.aggregation_sources import (
     anthropic_agg,
+    deepmind_agg,
     deepseek_agg,
+    dwarkesh_podcast_agg,
     huggingface_agg,
     moonshot_agg,
+    nvidia_podcast_agg,
     openai_agg,
     perplexity_agg,
     qwen_agg,
@@ -69,10 +72,6 @@ class ContentAggregator:
     def _initialize_rss_sources(self) -> None:
         self.rss_sources: List[Dict[str, Any]] = [
             self._source_config(
-                "rss_google_deepmind",
-                url="https://deepmind.google/blog/rss.xml",
-            ),
-            self._source_config(
                 "rss_sequoia_capital",
                 url="https://www.sequoiacap.com/feed/",
             ),
@@ -98,6 +97,7 @@ class ContentAggregator:
             self._source_config("scrape_qwen", scrape_func=qwen_agg.scrape),
             self._source_config("scrape_moonshot", scrape_func=moonshot_agg.scrape),
             self._source_config("scrape_openai", scrape_func=openai_agg.scrape),
+            self._source_config("scrape_google_deepmind", scrape_func=deepmind_agg.scrape),
             self._source_config("scrape_perplexity", scrape_func=perplexity_agg.scrape),
             self._source_config("scrape_thinking_machines", scrape_func=thinkingmachines_agg.scrape),
             self._source_config(
@@ -106,6 +106,8 @@ class ContentAggregator:
                 type="research_paper",
             ),
             self._source_config("scrape_tavily_trends", scrape_func=tavily_trending.scrape_async),
+            self._source_config("scrape_nvidia_podcast", scrape_func=nvidia_podcast_agg.scrape, type="podcast"),
+            self._source_config("scrape_dwarkesh_podcast", scrape_func=dwarkesh_podcast_agg.scrape, type="podcast"),
         ]
 
 

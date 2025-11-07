@@ -46,6 +46,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
   news: "Article",
   research_lab: "Research",
   research_paper: "Research Papers",
+  podcast: "Podcast",
 };
 
 const CATEGORY_LABELS: Record<string, string> = {

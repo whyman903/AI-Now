@@ -114,6 +114,7 @@ export default function Home() {
     () => [
       { id: "youtube_video", label: "Video", value: "youtube_video" },
       { id: "article", label: "Article", value: "article" },
+      { id: "podcast", label: "Podcast", value: "podcast" },
     ],
     []
   );
