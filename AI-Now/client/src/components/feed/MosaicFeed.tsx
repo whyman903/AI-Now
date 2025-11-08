@@ -29,9 +29,9 @@ interface MosaicFeedProps {
   isFiltering?: boolean;
 }
 
-const BASE_ROW_PX = 320;
-const BASE_IMAGE_HEIGHT = 160;
-const GRID_GAP_PX = 16;
+const BASE_ROW_PX = 288;
+const BASE_IMAGE_HEIGHT = 144;
+const GRID_GAP_PX = 14;
 const MAX_ANALYTICS_STRING_LENGTH = 200;
 const MAX_ANALYTICS_ARRAY_LENGTH = 10;
 const METADATA_DENYLIST = new Set([
@@ -94,9 +94,9 @@ function sanitizeAnalyticsMetadata(
 const seenContentViews = new Set<string>();
 
 const LONG_TITLE_RULES = [
-  { minLength: 220, size: "text-xs" },
-  { minLength: 170, size: "text-sm" },
-  { minLength: 130, size: "text-base" },
+  { minLength: 220, size: "text-[0.7rem]" },
+  { minLength: 170, size: "text-xs" },
+  { minLength: 130, size: "text-sm" },
 ] as const;
 
 const YOUTUBE_URL_PATTERNS = [
@@ -231,12 +231,12 @@ const TrendingPaperCard = memo(function TrendingPaperCard({ paper, index, isFilt
   return (
     <div
       ref={registerViewRef as RefCallback<HTMLDivElement>}
-      className="trending-paper-card group cursor-pointer rounded-xl p-3 h-24 overflow-hidden bg-gradient-to-br from-blue-50 via-sky-50/50 to-background dark:bg-none dark:bg-blue-950/20 hover:shadow-[0_8px_20px_rgba(153,153,153,0.25)] transition-all duration-300 border-l-4 border-blue-500 dark:border-blue-700"
+      className="trending-paper-card group cursor-pointer rounded-xl p-2.5 h-20 overflow-hidden bg-gradient-to-br from-blue-50 via-sky-50/50 to-background dark:bg-none dark:bg-blue-950/20 hover:shadow-[0_8px_20px_rgba(153,153,153,0.25)] transition-all duration-300 border-l-4 border-blue-500 dark:border-blue-700"
       onClick={handleClick}
     >
       <div className="flex items-start gap-3">
         <div className="shrink-0 mt-0.5">
-          <span className="text-2xl font-bold text-blue-600 dark:text-gray-300 font-mono">
+          <span className="text-xl font-bold text-blue-600 dark:text-gray-300 font-mono">
             {index + 1}
           </span>
         </div>
@@ -244,7 +244,7 @@ const TrendingPaperCard = memo(function TrendingPaperCard({ paper, index, isFilt
           <div className="flex items-start justify-between gap-2">
             <h3
               className={`trending-paper-title font-serif ${
-                paper.title.length > 100 ? "text-xs" : "text-sm"
+                paper.title.length > 100 ? "text-[0.7rem]" : "text-xs"
               } font-semibold leading-snug line-clamp-2 text-blue-900 dark:text-gray-300`}
             >
               {paper.title}
@@ -256,12 +256,12 @@ const TrendingPaperCard = memo(function TrendingPaperCard({ paper, index, isFilt
                 className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1 transition-colors bg-blue-200/60 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60"
                 onClick={handleGithubClick}
               >
-                <Github className="h-4 w-4 text-blue-700 dark:text-gray-300" />
+                <Github className="h-3.5 w-3.5 text-blue-700 dark:text-gray-300" />
               </button>
             )}
           </div>
           {paper.author && (
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">By {paper.author}</p>
+            <p className="text-[0.7rem] text-gray-600 dark:text-gray-400 mt-1 truncate">By {paper.author}</p>
           )}
         </div>
       </div>
@@ -392,8 +392,8 @@ export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }:
     });
 
   return (
-    <div className="p-2 sm:p-3 lg:p-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+    <div className="p-1.5 sm:p-2.5 lg:p-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-start">
         {isLg && (
           <div
             className="col-span-1 sm:col-span-2 lg:col-span-3 overflow-hidden"
@@ -404,19 +404,19 @@ export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }:
                   : "auto",
             }}
           >
-            <div
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 h-full"
-              style={{ gridAutoRows: `${rowPx}px` }}
-            >
-              {renderGridItems(finalContent.slice(0, sidebarRows * 3), 0)}
-            </div>
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 h-full"
+            style={{ gridAutoRows: `${rowPx}px` }}
+          >
+            {renderGridItems(finalContent.slice(0, sidebarRows * 3), 0)}
+          </div>
           </div>
         )}
 
         {papers.length > 0 && (
           <aside ref={sidebarRef} className="col-span-1 lg:col-start-4 lg:col-span-1">
             <div className="pb-3 mb-4">
-              <h2 className="text-2xl font-bold text-black dark:text-gray-300">Trending Research</h2>
+              <h2 className="text-xl font-bold text-black dark:text-gray-300">Trending Research</h2>
               {latestScrapeDate && (
                 <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   Updated {new Date(latestScrapeDate).toLocaleDateString()}
@@ -425,7 +425,7 @@ export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }:
               )}
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {papers.slice(0, 10).map((paper, idx) => (
                 <TrendingPaperCard
                   key={paper.id}
@@ -452,7 +452,7 @@ export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }:
 
         <div className="col-span-1 sm:col-span-2 lg:col-span-4">
           <div
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"
             style={{ gridAutoRows: `${rowPx}px` }}
           >
             {renderGridItems(
@@ -593,7 +593,7 @@ const ArticleCard = memo(function ArticleCard({
   }
   
   const titleLength = item.title.trim().length;
-  let titleSize = isAiTrends ? "text-2xl" : "text-lg"; // Bigger title for AI Trends
+  let titleSize = isAiTrends ? "text-xl" : "text-base"; // Bigger title for AI Trends
 
   // Don't apply long title rules to AI Trends
   if (!isAiTrends) {
@@ -609,10 +609,10 @@ const ArticleCard = memo(function ArticleCard({
     }
   }
 
-  const containerPadding = variant === "featured" ? "lg:p-6" : "";
+  const containerPadding = variant === "featured" ? "lg:p-5" : "";
   const featuredTitleBoost = variant === "featured" && titleLength < 160 && !isAiTrends;
   if (featuredTitleBoost) {
-    titleSize = "text-2xl";
+    titleSize = "text-xl";
     if (!hideImage) {
       titleClamp = "line-clamp-3";
     }
@@ -623,7 +623,7 @@ const ArticleCard = memo(function ArticleCard({
   return (
     <div
       ref={registerViewRef as RefCallback<HTMLDivElement>}
-      className={`group cursor-pointer flex flex-col p-4 ${containerPadding} rounded-2xl w-full h-full ${cardStyleClasses}`}
+      className={`group cursor-pointer flex flex-col p-3 ${containerPadding} rounded-2xl w-full h-full ${cardStyleClasses}`}
       onClick={handleCardClick}
     >
       {/* Subtle accent for AI Trends */}
@@ -633,7 +633,7 @@ const ArticleCard = memo(function ArticleCard({
 
       {!hideImage && (
         <div
-          className="overflow-hidden rounded-xl w-full flex items-center justify-center relative"
+          className="overflow-hidden rounded-lg w-full flex items-center justify-center relative"
           style={{ height: `${imageHeight}px`, zIndex: 1 }}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
@@ -660,10 +660,10 @@ const ArticleCard = memo(function ArticleCard({
         </div>
       )}
 
-      <div className={`flex flex-col justify-start flex-grow overflow-hidden relative ${!hideImage ? "pt-3" : ""}`} style={{ zIndex: 1 }}>
+      <div className={`flex flex-col justify-start flex-grow overflow-hidden relative ${!hideImage ? "pt-2.5" : ""}`} style={{ zIndex: 1 }}>
         <div>
           {!isAiTrends && (
-            <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+            <div className="flex items-center justify-between text-sm text-muted-foreground mb-1.5">
               <div className="flex items-center">
                 {itemIcon}
                 <span className="ml-2 capitalize">{item.type.replace("_", " ")}</span>

@@ -146,8 +146,8 @@ export function LabSidebar({
       <div
         className={`border-b border-border bg-background/90 backdrop-blur ${
           isExpanded
-            ? "flex items-center justify-between px-3 py-3"
-            : "flex flex-col items-center gap-3 py-4"
+            ? "flex items-center justify-between px-2.5 py-2.5"
+            : "flex flex-col items-center gap-2.5 py-3.5"
         }`}
       >
         <Button
@@ -177,8 +177,8 @@ export function LabSidebar({
       </div>
 
       {isExpanded && (
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-          <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4">
+        <div className="flex-1 overflow-y-auto px-3.5 py-5 space-y-5">
+          <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-3.5">
             {auth.isLoading ? (
               <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -318,7 +318,7 @@ export function LabSidebar({
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={onClear}
-                className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                className={`px-2.5 py-1 rounded-full border text-sm transition-colors ${
                   selectedLabs.length
                     ? "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
                     : "bg-primary text-primary-foreground border-primary shadow"
@@ -340,7 +340,7 @@ export function LabSidebar({
                   <button
                     key={lab.id}
                     onClick={() => onToggleLab(lab)}
-                    className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                    className={`px-2.5 py-1 rounded-full border text-sm transition-colors ${
                       isActive
                         ? "bg-primary text-primary-foreground border-primary shadow"
                         : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -359,7 +359,7 @@ export function LabSidebar({
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={onClearContentTypes}
-                  className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                  className={`px-2.5 py-1 rounded-full border text-sm transition-colors ${
                     selectedContentTypes.length
                       ? "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
                       : "bg-primary text-primary-foreground border-primary shadow"
@@ -383,7 +383,7 @@ export function LabSidebar({
                     <button
                       key={type.id}
                       onClick={() => onToggleContentType(type)}
-                      className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                      className={`px-2.5 py-1 rounded-full border text-sm transition-colors ${
                         isActive
                           ? "bg-primary text-primary-foreground border-primary shadow"
                           : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"

@@ -391,19 +391,19 @@ export default function Home() {
     <div className="min-h-screen bg-background flex">
       <div className="flex-1 flex flex-col">
         <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-          <div className="px-6 py-3">
+          <div className="px-5 py-2.5">
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
               <span className="block" aria-hidden="true" />
               <AppLogo />
               <div className="justify-self-end flex items-center gap-3">
                 <div className="relative group">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none z-10" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-foreground pointer-events-none z-10" />
                   <Input
                     type="text"
                     placeholder="Search by title or org..."
                     value={keywordFilter}
                     onChange={(e) => setKeywordFilter(e.target.value)}
-                    className="pl-9 pr-8 h-9 bg-transparent border-transparent group-hover:bg-background group-hover:border-border group-focus-within:bg-background group-focus-within:border-border transition-all duration-300 ease-in-out w-10 group-hover:w-64 group-focus-within:w-64"
+                    className="pl-8 pr-8 h-8 bg-transparent border-transparent group-hover:bg-background group-hover:border-border group-focus-within:bg-background group-focus-within:border-border transition-all duration-300 ease-in-out w-10 group-hover:w-56 group-focus-within:w-56"
                   />
                   {keywordFilter && (
                     <button
@@ -422,9 +422,9 @@ export default function Home() {
         </div>
 
         <div className="flex-1 flex flex-col">
-          <div className="px-6 py-6 space-y-6">
+          <div className="px-5 py-5 space-y-6">
             {hasActiveFilters && (
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2.5 text-sm">
                 <span>
                   Filters applied{activeFilterSummary ? ` — ${activeFilterSummary}` : ""}.
                 </span>
