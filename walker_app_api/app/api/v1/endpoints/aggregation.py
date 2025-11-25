@@ -2,7 +2,7 @@
 Content aggregation endpoints for triggering and monitoring content collection.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from typing import Dict, Any
 import logging
 
@@ -24,29 +24,38 @@ router = APIRouter()
 )
 async def trigger_aggregation(
     background_tasks: BackgroundTasks,
-    hours_back: int = 24
+    hours_back: int = 24,
+    low_memory: bool = Body(False, embed=True),
 ) -> Dict[str, Any]:
     """
     Trigger content aggregation from all sources.
     
     Args:
         hours_back: How many hours back to fetch content (default: 24)
+        low_memory: Run aggregation sequentially with reduced batch sizes (default: False)
         
     Returns:
         Dict with aggregation trigger status
     """
     try:
         aggregator = get_content_aggregator()
+        aggregator.configure(low_memory=low_memory)
+        
         background_tasks.add_task(
             aggregator.aggregate_all_content
         )
         
-        logger.info(f"Content aggregation triggered for last {hours_back} hours")
+        logger.info(
+            "Content aggregation triggered for last %s hours (low_memory=%s)",
+            hours_back,
+            low_memory,
+        )
         
         return {
             "status": "triggered",
             "message": f"Content aggregation started for last {hours_back} hours",
-            "hours_back": hours_back
+            "hours_back": hours_back,
+            "low_memory": low_memory,
         }
         
     except Exception as e:

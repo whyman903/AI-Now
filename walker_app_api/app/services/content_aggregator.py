@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import inspect
 import logging
 import re
 import time
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import feedparser
@@ -51,9 +52,29 @@ class ContentAggregator:
         self._thumb_cache_size = 256
         self._youtube_duration_cache: Dict[str, Optional[int]] = {}
 
+        # Default batching + mode configuration
+        self.low_memory_mode = False
+        self.web_scraper_batch_size = 3
+        self.youtube_batch_size = 4
+        self.rss_batch_size = 6
+
         self._initialize_rss_sources()
         self._initialize_youtube_sources()
         self._initialize_web_scraper_sources()
+
+    def configure(self, *, low_memory: bool = False) -> None:
+        """Adjust batching strategy for the next run."""
+
+        if low_memory:
+            self.low_memory_mode = True
+            self.web_scraper_batch_size = 1
+            self.youtube_batch_size = 2
+            self.rss_batch_size = 3
+        else:
+            self.low_memory_mode = False
+            self.web_scraper_batch_size = 3
+            self.youtube_batch_size = 4
+            self.rss_batch_size = 6
 
     def _source_config(self, source_key: str, **overrides: Any) -> Dict[str, Any]:
         definition = SOURCES_BY_KEY.get(source_key)
@@ -114,8 +135,41 @@ class ContentAggregator:
     def set_http_client(self, client: httpx.AsyncClient) -> None:
         self.client = client
 
+    async def _execute_source_groups(
+        self,
+        groups: List[Tuple[str, Callable[[], Awaitable[Dict[str, Any]]]]],
+    ) -> List[Tuple[str, Any]]:
+        if not groups:
+            return []
+
+        if self.low_memory_mode:
+            logger.info(
+                "Running %s source group(s) sequentially (low-memory mode)",
+                len(groups),
+            )
+            outcomes: List[Tuple[str, Any]] = []
+            for name, func in groups:
+                try:
+                    result = await func()
+                except Exception as exc:  # pragma: no cover - logged below
+                    result = exc
+                outcomes.append((name, result))
+                gc.collect()
+            return outcomes
+
+        tasks = [func() for _, func in groups]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        names = [name for name, _ in groups]
+        return list(zip(names, responses, strict=False))
+
     async def aggregate_all_content(self) -> Dict[str, Any]:
-        logger.info("Starting unified content aggregation...")
+        logger.info(
+            "Starting unified content aggregation (low_memory=%s, web_batch=%s, yt_batch=%s, rss_batch=%s)...",
+            self.low_memory_mode,
+            self.web_scraper_batch_size,
+            self.youtube_batch_size,
+            self.rss_batch_size,
+        )
         start = self._utcnow_naive()
         results: Dict[str, Any] = {
             "started_at": start.isoformat(),
@@ -126,15 +180,13 @@ class ContentAggregator:
             "errors": [],
         }
 
-        tasks = [
-            self._aggregate_rss_feeds(),
-            self._aggregate_youtube_channels(),
-            self._aggregate_web_scrapers(),
+        groups: List[Tuple[str, Callable[[], Awaitable[Dict[str, Any]]]]] = [
+            ("rss_feeds", self._aggregate_rss_feeds),
+            ("youtube_channels", self._aggregate_youtube_channels),
+            ("web_scrapers", self._aggregate_web_scrapers),
         ]
 
-        source_names = ["rss_feeds", "youtube_channels", "web_scrapers"]
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-        for name, outcome in zip(source_names, responses, strict=False):
+        for name, outcome in await self._execute_source_groups(groups):
             if isinstance(outcome, Exception):
                 msg = f"Error in {name}: {outcome}"
                 logger.error(msg)
@@ -157,37 +209,42 @@ class ContentAggregator:
         )
         self._record_run_metrics(
             summary=results,
-            context={"mode": "full"},
+            context={"mode": "full", "low_memory": self.low_memory_mode},
         )
         return results
 
     async def aggregate_selective(self, rss: bool, youtube: bool, all_scrapers: bool, scrapers: Optional[List[str]]) -> Dict[str, Any]:
         start = self._utcnow_naive()
         logger.info(
-            "Starting selective aggregation (rss=%s, youtube=%s, all_scrapers=%s, requested_scrapers=%s)",
+            "Starting selective aggregation (rss=%s, youtube=%s, all_scrapers=%s, requested_scrapers=%s, low_memory=%s)",
             rss,
             youtube,
             all_scrapers,
             scrapers,
+            self.low_memory_mode,
         )
-        results = {"started_at": start.isoformat(), "sources": {}, "total_new_items": 0, "total_items_updated": 0, "items_with_thumbnails": 0, "errors": []}
-        
-        tasks, names = [], []
+        results = {
+            "started_at": start.isoformat(),
+            "sources": {},
+            "total_new_items": 0,
+            "total_items_updated": 0,
+            "items_with_thumbnails": 0,
+            "errors": [],
+        }
+
+        groups: List[Tuple[str, Callable[[], Awaitable[Dict[str, Any]]]]] = []
         if rss:
-            tasks.append(self._aggregate_rss_feeds())
-            names.append("rss_feeds")
+            groups.append(("rss_feeds", self._aggregate_rss_feeds))
         if youtube:
-            tasks.append(self._aggregate_youtube_channels())
-            names.append("youtube_channels")
+            groups.append(("youtube_channels", self._aggregate_youtube_channels))
         if all_scrapers:
-            tasks.append(self._aggregate_web_scrapers())
-            names.append("web_scrapers")
+            groups.append(("web_scrapers", self._aggregate_web_scrapers))
         elif scrapers:
             selected = [s for s in self.web_scraper_sources if s["name"] in scrapers]
-            tasks.append(self._run_scrapers_batch(selected))
-            names.append("web_scrapers")
-        
-        for name, outcome in zip(names, await asyncio.gather(*tasks, return_exceptions=True), strict=False):
+            if selected:
+                groups.append(("web_scrapers", lambda selected=selected: self._run_scrapers_batch(selected)))
+
+        for name, outcome in await self._execute_source_groups(groups):
             if isinstance(outcome, Exception):
                 results["errors"].append(f"{name}: {outcome}")
                 results["sources"][name] = {"error": str(outcome)}
@@ -196,7 +253,7 @@ class ContentAggregator:
                 results["total_new_items"] += outcome.get("items_added", 0)
                 results["total_items_updated"] += outcome.get("items_updated", 0)
                 results["items_with_thumbnails"] += outcome.get("items_with_thumbnails", 0)
-        
+
         end = self._utcnow_naive()
         results["completed_at"] = end.isoformat()
         results["duration_seconds"] = (end - start).total_seconds()
@@ -208,13 +265,14 @@ class ContentAggregator:
                 "youtube": youtube,
                 "all_scrapers": all_scrapers,
                 "scrapers": scrapers or [],
+                "low_memory": self.low_memory_mode,
             },
         )
         return results
     
     async def _run_scrapers_batch(self, scrapers: List[Dict[str, Any]]) -> Dict[str, Any]:
         items_processed = items_added = items_with_thumbnails = items_updated = 0
-        logger.info("Running targeted scraper batch with %s sources", len(scrapers))
+        logger.info("Running targeted scraper batch with %s sources (batch_size=%s)", len(scrapers), self.web_scraper_batch_size)
         start = time.perf_counter()
         
         slow_scrapers = [s for s in scrapers if "Tavily" in s["name"]]
@@ -228,7 +286,7 @@ class ContentAggregator:
             )
             slow_tasks.append(asyncio.create_task(self._process_web_scraper(source)))
         
-        batch_size = 3
+        batch_size = self.web_scraper_batch_size
         total_batches = (len(fast_scrapers) + batch_size - 1) // batch_size if fast_scrapers else 0
         for i in range(0, len(fast_scrapers), batch_size):
             batch = fast_scrapers[i : i + batch_size]
@@ -269,6 +327,9 @@ class ContentAggregator:
                     len(result),
                     stats.get("items_added", 0),
                 )
+            
+            if self.low_memory_mode:
+                gc.collect()
         
         if slow_tasks:
             logger.info(
@@ -333,8 +394,8 @@ class ContentAggregator:
         start = time.perf_counter()
         items_processed = items_added = items_with_thumbnails = items_updated = 0
 
-        batch_size = 6
-        logger.info("Total RSS sources queued: %s", len(self.rss_sources))
+        batch_size = self.rss_batch_size
+        logger.info("Total RSS sources queued: %s (batch_size=%s)", len(self.rss_sources), batch_size)
         total_batches = (len(self.rss_sources) + batch_size - 1) // batch_size if self.rss_sources else 0
         for i in range(0, len(self.rss_sources), batch_size):
             batch = self.rss_sources[i : i + batch_size]
@@ -365,6 +426,9 @@ class ContentAggregator:
                     len(result),
                     stats.get("items_added", 0),
                 )
+            
+            if self.low_memory_mode:
+                gc.collect()
 
         elapsed = time.perf_counter() - start
         logger.info(
@@ -386,8 +450,8 @@ class ContentAggregator:
         start = time.perf_counter()
         items_processed = items_added = items_with_thumbnails = items_updated = 0
 
-        batch_size = 4
-        logger.info("Total YouTube channels queued: %s", len(self.youtube_channels))
+        batch_size = self.youtube_batch_size
+        logger.info("Total YouTube channels queued: %s (batch_size=%s)", len(self.youtube_channels), batch_size)
         total_batches = (len(self.youtube_channels) + batch_size - 1) // batch_size if self.youtube_channels else 0
         for i in range(0, len(self.youtube_channels), batch_size):
             batch = self.youtube_channels[i : i + batch_size]
@@ -420,6 +484,9 @@ class ContentAggregator:
                     len(result),
                     stats.get("items_added", 0),
                 )
+            
+            if self.low_memory_mode:
+                gc.collect()
 
         elapsed = time.perf_counter() - start
         logger.info(
@@ -589,8 +656,10 @@ class ContentAggregator:
         slow_scrapers = [s for s in self.web_scraper_sources if "Tavily" in s["name"]]
         fast_scrapers = [s for s in self.web_scraper_sources if "Tavily" not in s["name"]]
         logger.info(
-            "Total web scrapers queued: %s",
+            "Total web scrapers queued: %s (batch_size=%s, low_memory=%s)",
             len(self.web_scraper_sources),
+            self.web_scraper_batch_size,
+            self.low_memory_mode,
         )
         logger.info(
             "Web scraper queue prepared: %s fast, %s slow",
@@ -606,7 +675,7 @@ class ContentAggregator:
             )
             slow_tasks.append(asyncio.create_task(self._process_web_scraper(source)))
         
-        batch_size = 3
+        batch_size = self.web_scraper_batch_size
         total_batches = (len(fast_scrapers) + batch_size - 1) // batch_size if fast_scrapers else 0
         for i in range(0, len(fast_scrapers), batch_size):
             batch = fast_scrapers[i : i + batch_size]
@@ -647,6 +716,9 @@ class ContentAggregator:
                     len(result),
                     stats.get("items_added", 0),
                 )
+            
+            if self.low_memory_mode:
+                gc.collect()
         
         if slow_tasks:
             logger.info(
