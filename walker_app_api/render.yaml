@@ -12,7 +12,7 @@ services:
     name: walker-app-api
     env: python
     plan: free
-    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    buildCommand: "apt-get update && apt-get install -y chromium && apt-get clean && rm -rf /var/lib/apt/lists/* && pip install --upgrade pip && pip install -r requirements.txt"
     startCommand: "alembic upgrade head && gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
     healthCheckPath: /health
     envVars:
@@ -28,6 +28,7 @@ services:
         value: INFO
       - key: LOG_FORMAT
         value: json
+      - key: CHROME_BINARY_PATH
+        value: /usr/bin/chromium
       - key: AGGREGATION_SERVICE_TOKEN
         generateValue: true
-

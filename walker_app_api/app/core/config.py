@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     AGGREGATION_SERVICE_TOKEN: Optional[str] = None
     AGGREGATION_SERVICE_TOKEN_NEXT: Optional[str] = None
     AGGREGATION_TOKEN_MIN_LENGTH: int = 32  # Minimum token length for security
+
+    # Web scraping / Selenium configuration
+    CHROME_BINARY_PATH: Optional[str] = None
+    DISABLE_SELENIUM_AGENTS: bool = False
     
     # Content processing settings
     MAX_CONTENT_AGE_DAYS: int = 30

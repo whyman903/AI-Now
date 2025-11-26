@@ -4,7 +4,9 @@ import asyncio
 import gc
 import inspect
 import logging
+import os
 import re
+import shutil
 import time
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
@@ -16,6 +18,7 @@ import httpx
 from dateutil import parser as dateparser
 from sqlalchemy import or_
 
+from app.core.config import settings
 from app.crud.analytics import AnalyticsCRUD
 from app.db.base import SessionLocal
 from app.db.models import ContentItem, FeedState
@@ -60,6 +63,7 @@ class ContentAggregator:
 
         self._initialize_rss_sources()
         self._initialize_youtube_sources()
+        self._selenium_enabled = self._detect_selenium_support()
         self._initialize_web_scraper_sources()
 
     def configure(self, *, low_memory: bool = False) -> None:
@@ -90,6 +94,29 @@ class ContentAggregator:
         config.update(overrides)
         return config
 
+    def _detect_selenium_support(self) -> bool:
+        if settings.DISABLE_SELENIUM_AGENTS:
+            logger.warning("Selenium-based scrapers disabled via settings")
+            return False
+
+        chrome_candidates = [
+            settings.CHROME_BINARY_PATH,
+            os.environ.get("GOOGLE_CHROME_BIN"),
+            os.environ.get("CHROME_BINARY"),
+        ]
+        for candidate in chrome_candidates:
+            if candidate and os.path.exists(candidate):
+                return True
+
+        for binary in ("google-chrome", "chromium", "chromium-browser", "chrome"):
+            if shutil.which(binary):
+                return True
+
+        logger.warning(
+            "Chrome/Chromium binary not found; Selenium-based scrapers will be skipped."
+        )
+        return False
+
     def _initialize_rss_sources(self) -> None:
         self.rss_sources: List[Dict[str, Any]] = [
             self._source_config(
@@ -111,15 +138,15 @@ class ContentAggregator:
         ]
 
     def _initialize_web_scraper_sources(self) -> None:
-        self.web_scraper_sources: List[Dict[str, Any]] = [
-            self._source_config("scrape_anthropic", scrape_func=anthropic_agg.scrape),
-            self._source_config("scrape_deepseek", scrape_func=deepseek_agg.scrape),
-            self._source_config("scrape_xai", scrape_func=xai_agg.scrape),
+        configured_sources = [
+            self._source_config("scrape_anthropic", scrape_func=anthropic_agg.scrape, requires_selenium=True),
+            self._source_config("scrape_deepseek", scrape_func=deepseek_agg.scrape, requires_selenium=True),
+            self._source_config("scrape_xai", scrape_func=xai_agg.scrape, requires_selenium=True),
             self._source_config("scrape_qwen", scrape_func=qwen_agg.scrape),
-            self._source_config("scrape_moonshot", scrape_func=moonshot_agg.scrape),
-            self._source_config("scrape_openai", scrape_func=openai_agg.scrape),
+            self._source_config("scrape_moonshot", scrape_func=moonshot_agg.scrape, requires_selenium=True),
+            self._source_config("scrape_openai", scrape_func=openai_agg.scrape, requires_selenium=True),
             self._source_config("scrape_google_deepmind", scrape_func=deepmind_agg.scrape),
-            self._source_config("scrape_perplexity", scrape_func=perplexity_agg.scrape),
+            self._source_config("scrape_perplexity", scrape_func=perplexity_agg.scrape, requires_selenium=True),
             self._source_config("scrape_thinking_machines", scrape_func=thinkingmachines_agg.scrape),
             self._source_config(
                 "scrape_hugging_face_papers",
@@ -127,9 +154,34 @@ class ContentAggregator:
                 type="research_paper",
             ),
             self._source_config("scrape_tavily_trends", scrape_func=tavily_trending.scrape_async),
-            self._source_config("scrape_nvidia_podcast", scrape_func=nvidia_podcast_agg.scrape, type="podcast"),
-            self._source_config("scrape_dwarkesh_podcast", scrape_func=dwarkesh_podcast_agg.scrape, type="podcast"),
+            self._source_config(
+                "scrape_nvidia_podcast",
+                scrape_func=nvidia_podcast_agg.scrape,
+                type="podcast",
+                requires_selenium=True,
+            ),
+            self._source_config(
+                "scrape_dwarkesh_podcast",
+                scrape_func=dwarkesh_podcast_agg.scrape,
+                type="podcast",
+                requires_selenium=True,
+            ),
         ]
+
+        skipped: List[str] = []
+        self.web_scraper_sources = []
+        for source in configured_sources:
+            requires_selenium = source.pop("requires_selenium", False)
+            if requires_selenium and not self._selenium_enabled:
+                skipped.append(source["name"])
+                continue
+            self.web_scraper_sources.append(source)
+
+        if skipped:
+            logger.warning(
+                "Skipping Selenium scrapers: %s (Chrome/Chromium binary unavailable)",
+                ", ".join(skipped),
+            )
 
 
     def set_http_client(self, client: httpx.AsyncClient) -> None:
