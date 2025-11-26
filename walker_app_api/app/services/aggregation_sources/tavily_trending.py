@@ -153,7 +153,7 @@ async def _generate_ai_trends_summary() -> TrendingSummary:
             Provide 5 TRULY GROUNDBREAKING items. Quality over quantity - if you can't find 5 with tier-1 sources, provide fewer.
         """
     agent = Agent(
-        OpenAIChatModel("grok-4.1-fast", provider=GrokProvider(api_key=settings.XAI_API_KEY)),
+        OpenAIChatModel("grok-4-1-fast", provider=GrokProvider(api_key=settings.XAI_API_KEY)),
         output_type=TrendingSummary,
         system_prompt=(
             """You are an AI news aggregator agent with access to the Tavily search tool. 
@@ -239,7 +239,7 @@ async def scrape_async() -> List[Dict[str, Any]]:
                 "source_name": "Tavily AI Trends",
                 "summary": digest,
                 "generated_by": "pydantic_ai",
-                "model": "grok-4.1-fast",
+                "model": "grok-4-1-fast",
                 "search_engine": "tavily",
                 "generated_at": timestamp.isoformat(),
             },
