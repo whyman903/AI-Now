@@ -45,6 +45,7 @@ const METADATA_DENYLIST = new Set([
   "source_documents",
   "sections",
 ]);
+const YOUTUBE_EAGER_COUNT = 6;
 
 function sanitizeAnalyticsMetadata(
   metadata: Record<string, any> | null | undefined
@@ -327,6 +328,55 @@ export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }:
     };
   }, [items]);
 
+  const eagerYouTubeTargets = useMemo(() => {
+    const ids = new Set<string>();
+    const thumbnails: string[] = [];
+
+    for (const item of finalContent) {
+      if (item.type !== "youtube_video") {
+        continue;
+      }
+      ids.add(item.id);
+      if (item.thumbnailUrl) {
+        thumbnails.push(item.thumbnailUrl);
+      }
+      if (ids.size >= YOUTUBE_EAGER_COUNT) {
+        break;
+      }
+    }
+
+    return { ids, thumbnails };
+  }, [finalContent]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || eagerYouTubeTargets.thumbnails.length === 0) {
+      return;
+    }
+
+    const head = document.head;
+    const links: HTMLLinkElement[] = [];
+    const seen = new Set<string>();
+
+    for (const url of eagerYouTubeTargets.thumbnails) {
+      if (!url || seen.has(url)) {
+        continue;
+      }
+      seen.add(url);
+      const link = document.createElement("link");
+      link.rel = "preload";
+      link.as = "image";
+      link.href = url;
+      head.appendChild(link);
+      links.push(link);
+    }
+
+    return () => {
+      for (const link of links) {
+        head.removeChild(link);
+      }
+    };
+  }, [eagerYouTubeTargets.thumbnails]);
+
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const [sidebarRows, setSidebarRows] = useState<number>(0);
   const rowPx = Math.max(200, Math.round(BASE_ROW_PX * cardSize));
@@ -377,6 +427,7 @@ export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }:
       const isFeatured = isLg && absoluteIndex === 0 && isAiTrendsTile;
       const sizeClasses = isFeatured ? " lg:col-span-2 lg:row-span-2" : "";
       const cardHeight = isFeatured ? imageHeight * 2 + GRID_GAP_PX : imageHeight;
+      const eagerLoadImage = eagerYouTubeTargets.ids.has(item.id);
 
       return (
         <div key={item.id} className={`col-span-1 row-span-1 h-full${sizeClasses}`}>
@@ -386,6 +437,7 @@ export default function MosaicFeed({ items, cardSize = 1, isFiltering = false }:
             variant={isFeatured ? "featured" : "default"}
             position={absoluteIndex}
             isFiltering={isFiltering}
+            eagerLoadImage={eagerLoadImage}
           />
         </div>
       );
@@ -472,6 +524,7 @@ interface ArticleCardProps {
   variant?: "default" | "featured";
   position?: number;
   isFiltering: boolean;
+  eagerLoadImage?: boolean;
 }
 
 interface ArticleTrackingSnapshot {
@@ -488,6 +541,7 @@ const ArticleCard = memo(function ArticleCard({
   variant = "default",
   position,
   isFiltering,
+  eagerLoadImage = false,
 }: ArticleCardProps) {
   const hasThumbnail = !!item.thumbnailUrl;
   const [hideImage, setHideImage] = useState(!hasThumbnail);
@@ -550,6 +604,8 @@ const ArticleCard = memo(function ArticleCard({
 
   const isYouTube = item.type === "youtube_video";
   const youtubeVideoId = isYouTube && item.sourceUrl ? extractYouTubeVideoId(item.sourceUrl) : null;
+  const imageLoading = eagerLoadImage ? "eager" : "lazy";
+  const imageDecoding = eagerLoadImage ? "sync" : "async";
 
   // Handle hover for YouTube videos
   const handleMouseEnter = () => {
@@ -650,8 +706,8 @@ const ArticleCard = memo(function ArticleCard({
             <img
               src={item.thumbnailUrl ?? undefined}
               alt={item.title}
-              loading="lazy"
-              decoding="async"
+              loading={imageLoading}
+              decoding={imageDecoding}
               sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 100vw"
               className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-300"
               onError={() => setHideImage(true)}
