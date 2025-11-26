@@ -51,8 +51,8 @@ class SearchClickPayload(BaseModel):
 class InteractionBatchPayload(BaseModel):
     interactions: List[InteractionPayload] = Field(
         ...,
-        min_items=1,
-        max_items=200,
+        min_length=1,
+        max_length=200,
         description="Collection of interaction events to persist in a single request",
     )
 
@@ -60,8 +60,8 @@ class InteractionBatchPayload(BaseModel):
 class SearchBatchPayload(BaseModel):
     searches: List[SearchPayload] = Field(
         ...,
-        min_items=1,
-        max_items=200,
+        min_length=1,
+        max_length=200,
         description="Collection of search events to persist in a single request",
     )
 
@@ -69,8 +69,8 @@ class SearchBatchPayload(BaseModel):
 class SearchClickBatchPayload(BaseModel):
     updates: List[SearchClickPayload] = Field(
         ...,
-        min_items=1,
-        max_items=200,
+        min_length=1,
+        max_length=200,
         description="Collection of search click updates to apply",
     )
 

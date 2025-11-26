@@ -8,7 +8,7 @@ import httpx
 from contextlib import asynccontextmanager
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.api.v1.api import api_router
 from app.core.config import settings
@@ -19,7 +19,7 @@ class JSONFormatter(logging.Formatter):
     """Format logs as JSON for production"""
     def format(self, record):
         log_obj = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

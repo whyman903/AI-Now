@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SourcePreferenceState(BaseModel):
     source_key: str = Field(alias="sourceKey")
     enabled: bool
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SourcePreferencesResponse(BaseModel):

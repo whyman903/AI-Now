@@ -1,8 +1,11 @@
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 from typing import Optional
 
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+
     PROJECT_NAME: str = "AI-Now API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
@@ -71,10 +74,6 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Parse CORS_ORIGINS string into list"""
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
-    
-    class Config:
-        env_file = ".env"
-        extra = "ignore"  # Ignore extra environment variables
 
 
 settings = Settings()

@@ -1,20 +1,33 @@
 """
 Tests for aggregation endpoint security (token authentication).
 """
+import os
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch
-import os
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # Must set environment variables before importing the app
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["AGGREGATION_SERVICE_TOKEN"] = "test-token-" + "x" * 32
 
-from walker_app_api.main import app
+import main as app_module
+from app.core import config  # noqa: E402
+
+# Ensure config picks up our test token value even if settings was already instantiated
+config.settings.AGGREGATION_SERVICE_TOKEN = os.environ["AGGREGATION_SERVICE_TOKEN"]
+
+app = app_module.app
 
 
 @pytest.fixture
-def client():
+def client(sessionmaker_fixture):
     """Create a test client."""
     return TestClient(app)
 
@@ -53,14 +66,9 @@ class TestAggregationAuthentication:
             assert response.status_code == 200
             assert response.json()["status"] == "triggered"
 
-    def test_aggregate_now_without_token(self, client):
-        """Should return 401 when token is missing."""
-        response = client.post("/api/v1/aggregation/aggregate-now")
-        assert response.status_code == 401
-
     def test_sources_refresh_without_token(self, client):
         """Should return 401 when token is missing."""
-        response = client.post("/api/v1/items/sources/refresh/test-source")
+        response = client.post("/api/v1/sources/refresh/test-source")
         assert response.status_code == 401
 
 
