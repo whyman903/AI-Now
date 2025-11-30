@@ -122,13 +122,21 @@ class ContentAggregator:
             settings.CHROME_BINARY_PATH,
             os.environ.get("GOOGLE_CHROME_BIN"),
             os.environ.get("CHROME_BINARY"),
+            # Common paths on Linux/Render
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
         ]
         for candidate in chrome_candidates:
             if candidate and os.path.exists(candidate):
+                logger.info("Found Chrome/Chromium at: %s", candidate)
                 return True
 
-        for binary in ("google-chrome", "chromium", "chromium-browser", "chrome"):
-            if shutil.which(binary):
+        for binary in ("google-chrome", "chromium", "chromium-browser", "chrome", "google-chrome-stable"):
+            path = shutil.which(binary)
+            if path:
+                logger.info("Found Chrome/Chromium in PATH: %s", path)
                 return True
 
         logger.warning(
