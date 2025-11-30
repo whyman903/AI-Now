@@ -20,33 +20,37 @@ class TrendingSummary(BaseModel):
     )
 
 
+# Major US/UK tech publications only
+TRUSTED_DOMAINS = [
+    "techcrunch.com", "theverge.com", "wired.com", "arstechnica.com",
+    "bloomberg.com", "reuters.com", "wsj.com", "nytimes.com", "ft.com",
+    "cnbc.com", "venturebeat.com", "theinformation.com", "semafor.com",
+    "technologyreview.com", "engadget.com", "zdnet.com", "cnet.com",
+]
+
+
 async def _get_tavily_search_results() -> str:
-    """
-    Fetches raw search results directly using Tavily's 'news' topic.
-    This is faster and more focused than a general agentic search.
-    """
+    """Fetches raw search results using Tavily's news topic with domain filtering."""
     tavily_client = AsyncTavilyClient(api_key=settings.TAVILY_API_KEY)
     
-    # We use a broad, high-level query because 'topic="news"' handles the recency logic for us.
-    query = "groundbreaking artificial intelligence news model releases and major announcements"
+    query = "AI model release OR foundation model launch OR LLM update OR AI benchmark OR AGI research OR major AI funding OR AI acquisition -opinion"
     
     try:
         response = await tavily_client.search(
             query=query,
-            topic="news",      # Optimized for news retrieval
-            days=5,            # Look back 5 days
-            max_results=10,     # Get enough to filter down to top 5
-            
+            topic="news",
+            search_depth="advanced",
+            days=7,
+            max_results=12,
+            include_domains=TRUSTED_DOMAINS,
         )
         
-        # Format results into a clean text block for the LLM
         results = response.get("results", [])
         if not results:
             return "No recent news found."
             
         formatted_results = []
         for r in results:
-            # We explicitly grab title, content, url, and published_date if available
             published_date = r.get('published_date') or r.get('publishedDate') or ''
             date_str = f"\nPublished: {published_date}" if published_date else ""
             formatted_results.append(
@@ -60,20 +64,13 @@ async def _get_tavily_search_results() -> str:
         return ""
 
 async def _generate_ai_trends_summary() -> TrendingSummary:
-    """
-    Pipeline: 
-    1. Search Tavily (News)
-    2. Summarize with LLM (Grok)
-    """
+    """Pipeline: Search Tavily -> Summarize with LLM (Grok)"""
     
-    # 1. Get Context
     search_context = await _get_tavily_search_results()
     
     if not search_context or search_context == "No recent news found.":
-        return TrendingSummary(markdown_news_digest="No significant AI news found in the last 5 days.")
+        return TrendingSummary(markdown_news_digest="No significant AI news found in the last 3 days.")
 
-    # 2. Call LLM (Grok via OpenAI-compatible client)
-    # Note: Using AsyncOpenAI is standard for Grok/xAI now
     client = AsyncOpenAI(
         api_key=settings.XAI_API_KEY, 
         base_url="https://api.x.ai/v1"
@@ -88,21 +85,14 @@ async def _generate_ai_trends_summary() -> TrendingSummary:
     {search_context}
     
     INSTRUCTIONS:
-    - Select the top 5 most groundbreaking stories.
-    - **CRITICAL: Do NOT include duplicate stories about the same event.** If multiple sources cover the same announcement (e.g., Claude Opus 4.5 release), pick ONE story and cite only ONE source.
-    - Start directly with "1." (numbered list).
-    - **Be CONCISE and PUNCHY: Aim for 1-2 sentences per item**
-    - Write in PAST TENSE with active voice.
-    - **Use FORMAL, DIRECT language. Avoid casual phrases like "tie-up", "alongside", or informal business jargon.**
-    - **ONLY STATE FACTS: NO editorial commentary, analysis, or implications.**
-    - **Bold key terms and names** inline (do not use separate headlines).
-    - End each item with a markdown citation: [Source Name](URL) YYYY/MM/DD.
-    - **IMPORTANT: For the citation, use ONLY the source name (e.g., "Bloomberg", "Reuters", "TechCrunch"), NOT the article title. Extract the source name from the URL domain.**
-    - Exclude: Rumors, opinions, "top 10" lists, or minor funding rounds.
-    - Strict Format: Markdown only.
+    - Select the top 5 most significant stories (model releases, major announcements, $500M+ funding, field-changing moves).
+    - SKIP: listicles, opinion pieces, minor enterprise deals, routine security patches, rate limits,"AI is changing X" fluff.
+    - **No duplicates.** One story per event.
+    - Start with "1." (numbered list). 1-2 sentences each.
+    - **Bold key names/terms**. End with [Source](URL) YYYY/MM/DD.
     
-    Example format:
-    1. Anthropic unveiled **Claude Opus 4.5**, enhancing coding, agentic abilities, and enterprise workflows. [Bloomberg](https://bloomberg.com/...) 1/15/2025.
+    Example:
+    1. Anthropic released **Claude Opus 4.5**, claiming 50% improvement on SWE-bench. [TechCrunch](https://techcrunch.com/...) 11/28/2025.
     """
 
     try:
@@ -112,7 +102,7 @@ async def _generate_ai_trends_summary() -> TrendingSummary:
                 {"role": "system", "content": "You are a concise tech news editor."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.2, # Keep it factual
+            temperature=0.2,
         )
         
         content = response.choices[0].message.content
@@ -132,9 +122,8 @@ async def scrape_async() -> List[Dict[str, Any]]:
         return []
 
     digest = trends.markdown_news_digest.strip()
-    
     timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
-    
+    print(digest)
     return [
         {
             "title": "AI Trends Digest",
