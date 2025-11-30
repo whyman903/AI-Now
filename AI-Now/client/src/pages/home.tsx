@@ -10,6 +10,18 @@ import { trackSearch } from "@/lib/analytics";
 import { ensureSessionRegistered } from "@/lib/session";
 import { useAuth } from "@/hooks/useAuth";
 
+/** Fuzzy match: chars in order, but span must be tight (max 2x query length) */
+function fuzzyMatch(query: string, target: string): boolean {
+  let start = -1, ti = 0;
+  for (const c of query) {
+    ti = target.indexOf(c, ti);
+    if (ti < 0) return false;
+    if (start < 0) start = ti;
+    ti++;
+  }
+  return (ti - start) <= query.length * 2;
+}
+
 interface LabFilter {
   id: string;
   label: string;
@@ -309,16 +321,13 @@ export default function Home() {
   );
 
   const filteredContent = useMemo(() => {
-    const trimmed = keywordFilter.trim();
-    if (!trimmed) {
-      return combined;
-    }
+    const trimmed = keywordFilter.trim().toLowerCase();
+    if (!trimmed) return combined;
 
-    const keyword = trimmed.toLowerCase();
     return searchableContent
-      .filter(({ haystack }) => haystack.includes(keyword))
+      .filter(({ haystack }) => haystack.includes(trimmed) || fuzzyMatch(trimmed, haystack))
       .map(({ item }) => item);
-  }, [keywordFilter, searchableContent]);
+  }, [keywordFilter, searchableContent, combined]);
 
   useEffect(() => {
     latestResultsCount.current = filteredContent.length;

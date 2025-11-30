@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -207,16 +207,34 @@ function applyPaletteToDocument(palette: TileColorPalette) {
 }
 
 export function TileColorProvider({ children }: TileColorProviderProps) {
-  const { user, fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
-  // Initialize from localStorage for immediate display, then sync with server
-  const [palette, setLocalPalette] = useState<TileColorPalette>(() => {
-    const saved = localStorage.getItem("tileColorPalette") as TileColorPalette;
-    return saved && saved in PALETTE_DEFINITIONS ? saved : "default";
-  });
-
+  // Start with default, then load from localStorage/server as appropriate
+  const [palette, setLocalPalette] = useState<TileColorPalette>("default");
   const [justSaved, setJustSaved] = useState(false);
+  const hasInitialized = useRef(false);
+
+  // Once auth resolves, decide what palette to use
+  useEffect(() => {
+    if (authLoading || hasInitialized.current) return;
+    
+    hasInitialized.current = true;
+    
+    if (user) {
+      // User is logged in - use localStorage as temporary cache until server data loads
+      const saved = localStorage.getItem("tileColorPalette") as TileColorPalette;
+      if (saved && saved in PALETTE_DEFINITIONS) {
+        setLocalPalette(saved);
+        applyPaletteToDocument(saved);
+      }
+    } else {
+      // Not logged in - always use default and clear any stale localStorage
+      localStorage.removeItem("tileColorPalette");
+      setLocalPalette("default");
+      applyPaletteToDocument("default");
+    }
+  }, [authLoading, user]);
 
   // Fetch from server when logged in
   const { data: preferencesData, isLoading } = useQuery({
@@ -243,9 +261,22 @@ export function TileColorProvider({ children }: TileColorProviderProps) {
       if (serverPalette && serverPalette in PALETTE_DEFINITIONS) {
         setLocalPalette(serverPalette);
         localStorage.setItem("tileColorPalette", serverPalette);
+        applyPaletteToDocument(serverPalette);
       }
     }
   }, [preferencesData]);
+
+  // Reset to default when user logs out (during same session)
+  const prevUserRef = useRef(user);
+  useEffect(() => {
+    // User just logged out (was logged in, now not)
+    if (prevUserRef.current && !user) {
+      setLocalPalette("default");
+      localStorage.removeItem("tileColorPalette");
+      applyPaletteToDocument("default");
+    }
+    prevUserRef.current = user;
+  }, [user]);
 
   // Save to server mutation
   const saveMutation = useMutation({
@@ -271,13 +302,7 @@ export function TileColorProvider({ children }: TileColorProviderProps) {
   // Apply colors whenever palette changes
   useEffect(() => {
     applyPaletteToDocument(palette);
-    localStorage.setItem("tileColorPalette", palette);
   }, [palette]);
-
-  // Apply on initial mount
-  useEffect(() => {
-    applyPaletteToDocument(palette);
-  }, []);
 
   const setPalette = useCallback(
     (newPalette: TileColorPalette) => {
