@@ -34,36 +34,31 @@ interface LabSidebarProps {
   onToggleCollapse: () => void;
 }
 
-const CONTENT_TYPE_PILL_STYLES: Record<
-  string,
-  { base: string; active: string }
-> = {
-  // Match the mosaic tile palettes so the filter chips mirror card colors
-  youtube_video: {
-    base:
-      "bg-[hsl(120,40%,92%)] border-[hsl(120,40%,85%)] text-[hsl(142,70%,20%)] hover:bg-[hsl(120,40%,90%)] hover:border-[hsl(120,40%,78%)] dark:bg-[hsl(175,35%,18%)] dark:border-[hsl(175,30%,28%)] dark:text-[hsl(150,70%,85%)] dark:hover:bg-[hsl(175,35%,22%)] dark:hover:border-[hsl(175,30%,34%)]",
-    active:
-      "bg-[hsl(120,40%,88%)] border-[hsl(120,40%,78%)] text-[hsl(142,70%,16%)] shadow-sm ring-2 ring-offset-2 ring-offset-background ring-[hsl(120,40%,62%)] dark:bg-[hsl(175,35%,24%)] dark:border-[hsl(175,30%,36%)] dark:text-[hsl(150,80%,90%)]",
-  },
-  article: {
-    base:
-      "bg-[hsl(210,65%,93%)] border-[hsl(210,55%,78%)] text-[hsl(210,70%,20%)] hover:bg-[hsl(210,65%,91%)] hover:border-[hsl(210,65%,70%)] dark:bg-[hsl(220,35%,18%)] dark:border-[hsl(220,30%,26%)] dark:text-[hsl(210,55%,88%)] dark:hover:bg-[hsl(220,35%,22%)] dark:hover:border-[hsl(220,30%,32%)]",
-    active:
-      "bg-[hsl(210,65%,88%)] border-[hsl(210,65%,70%)] text-[hsl(210,75%,16%)] shadow-sm ring-2 ring-offset-2 ring-offset-background ring-[hsl(210,65%,60%)] dark:bg-[hsl(220,35%,24%)] dark:border-[hsl(220,30%,34%)] dark:text-[hsl(210,65%,92%)]",
-  },
-  podcast: {
-    base:
-      "bg-[hsl(270,50%,92%)] border-[hsl(270,45%,80%)] text-[hsl(275,70%,22%)] hover:bg-[hsl(270,50%,90%)] hover:border-[hsl(270,50%,70%)] dark:bg-[hsl(270,40%,20%)] dark:border-[hsl(270,35%,30%)] dark:text-[hsl(280,65%,90%)] dark:hover:bg-[hsl(270,40%,24%)] dark:hover:border-[hsl(270,35%,36%)]",
-    active:
-      "bg-[hsl(270,50%,88%)] border-[hsl(270,50%,70%)] text-[hsl(275,80%,18%)] shadow-sm ring-2 ring-offset-2 ring-offset-background ring-[hsl(270,50%,64%)] dark:bg-[hsl(270,40%,26%)] dark:border-[hsl(270,35%,38%)] dark:text-[hsl(280,75%,92%)]",
-  },
-};
-
+// Content type pill styles using CSS custom properties for dynamic theming
+// These classes use inline styles for colors from the tile color palette
 function getContentTypeButtonClasses(typeId: string, isActive: boolean) {
-  const styles = CONTENT_TYPE_PILL_STYLES[typeId];
-  if (styles) {
-    return isActive ? styles.active : styles.base;
+  // Base classes shared by all content type pills
+  const baseShared = "transition-all duration-200";
+  const activeShared = "shadow-sm ring-2 ring-offset-2 ring-offset-background";
+
+  // Type-specific class mappings that work with dynamic tile colors
+  if (typeId === "youtube_video") {
+    return isActive
+      ? `${baseShared} ${activeShared} content-pill-youtube-active`
+      : `${baseShared} content-pill-youtube`;
   }
+  if (typeId === "article") {
+    return isActive
+      ? `${baseShared} ${activeShared} content-pill-article-active`
+      : `${baseShared} content-pill-article`;
+  }
+  if (typeId === "podcast") {
+    return isActive
+      ? `${baseShared} ${activeShared} content-pill-podcast-active`
+      : `${baseShared} content-pill-podcast`;
+  }
+
+  // Default fallback
   return isActive
     ? "bg-primary text-primary-foreground border-primary shadow ring-2 ring-primary/70 ring-offset-2 ring-offset-background"
     : "border-border text-muted-foreground hover:text-foreground hover:bg-muted";
@@ -326,13 +321,13 @@ export function LabSidebar({
                     {auth.user?.displayName || auth.user?.email}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Your source preferences are saved to your account.
+                    Your preferences are saved to your account.
                   </p>
                 </div>
                 <Link href="/manage-sources" className="block">
                   <Button variant="default" size="sm" className="w-full inline-flex items-center gap-2 justify-center">
                     <Settings className="h-4 w-4" />
-                    Manage Sources
+                    Manage Preferences
                   </Button>
                 </Link>
                 <Button variant="outline" size="sm" onClick={handleLogout} className="w-full inline-flex items-center gap-2 justify-center">

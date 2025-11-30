@@ -1,12 +1,17 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ArrowLeft, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Loader2, Check, Palette } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { AppLogo } from "@/components/branding/AppLogo";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import {
+  useTileColor,
+  TileColorPalette,
+  PALETTE_DEFINITIONS,
+} from "@/context/TileColorContext";
 
 const API_BASE = import.meta.env.VITE_PYTHON_API_URL || "http://localhost:8000";
 
@@ -297,6 +302,8 @@ export default function ManageSources() {
     }
   }, [user, authLoading, navigate]);
 
+  const { palette, setPalette, isSaving: isPaletteSaving, justSaved: paletteJustSaved } = useTileColor();
+
   if (authLoading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -306,6 +313,8 @@ export default function ManageSources() {
   }
 
   const isLoading = sourcesLoading || preferencesLoading;
+
+  const paletteKeys = Object.keys(PALETTE_DEFINITIONS) as TileColorPalette[];
 
   return (
     <div className="min-h-screen bg-background">
@@ -330,11 +339,12 @@ export default function ManageSources() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="space-y-6">
-          <div className="space-y-4">
+        <div className="space-y-8">
+          {/* Content Sources Section */}
+          <section className="space-y-4">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold">Manage Content Sources</h1>
+                <h2 className="text-2xl font-bold">Content Sources</h2>
                 {isSaving && (
                   <span className="text-sm text-muted-foreground inline-flex items-center gap-1.5">
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -375,7 +385,6 @@ export default function ManageSources() {
                 </Button>
               </div>
             )}
-          </div>
 
           {isLoading && (
             <div className="flex items-center justify-center py-20">
@@ -455,6 +464,76 @@ export default function ManageSources() {
                 ))}
             </div>
           )}
+          </section>
+
+          <hr className="border-border" />
+
+          {/* Tile Color Palette Section */}
+          <section className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <Palette className="h-6 w-6 text-muted-foreground" />
+                <h2 className="text-2xl font-bold">Tile Colors</h2>
+                {isPaletteSaving && (
+                  <span className="text-sm text-muted-foreground inline-flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Saving...
+                  </span>
+                )}
+                {paletteJustSaved && (
+                  <span className="text-sm text-green-500 inline-flex items-center gap-1.5">
+                    <Check className="h-3 w-3" />
+                    Saved
+                  </span>
+                )}
+              </div>
+              <p className="text-muted-foreground">
+                Choose a color palette for your content tiles.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {paletteKeys.map((key) => {
+                const def = PALETTE_DEFINITIONS[key];
+                const isSelected = palette === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setPalette(key)}
+                    className={`relative p-3 rounded-xl border-2 transition-all text-left ${
+                      isSelected
+                        ? "border-primary ring-2 ring-primary/20 shadow-md"
+                        : "border-border hover:border-muted-foreground/50 hover:shadow-sm"
+                    }`}
+                  >
+                    {isSelected && (
+                      <div className="absolute top-2 right-2">
+                        <Check className="h-4 w-4 text-primary" />
+                      </div>
+                    )}
+                    <div className="flex gap-1 mb-2">
+                      <div
+                        className="w-6 h-6 rounded-md border border-border/50"
+                        style={{ backgroundColor: def.youtube.light[0] }}
+                        title="Video"
+                      />
+                      <div
+                        className="w-6 h-6 rounded-md border border-border/50"
+                        style={{ backgroundColor: def.podcast.light[0] }}
+                        title="Podcast"
+                      />
+                      <div
+                        className="w-6 h-6 rounded-md border border-border/50"
+                        style={{ backgroundColor: def.article.light[0] }}
+                        title="Article"
+                      />
+                    </div>
+                    <p className="font-medium text-sm">{def.name}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         </div>
       </div>
     </div>

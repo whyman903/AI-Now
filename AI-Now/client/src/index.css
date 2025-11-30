@@ -145,56 +145,177 @@
 
 /* Article Cards - YouTube */
 .article-card-youtube {
-  background-color: hsl(120, 40%, 92%);
-  border-color: hsl(120, 40%, 85%);
+  background-color: var(--tile-youtube-bg-light, hsl(120, 40%, 92%));
+  border-color: var(--tile-youtube-border-light, hsl(120, 40%, 85%));
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease-in-out;
 }
 
 .article-card-youtube:hover {
-  border-color: hsl(120, 40%, 78%);
+  border-color: var(--tile-youtube-border-light, hsl(120, 40%, 78%));
+  filter: brightness(0.97);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
 .dark .article-card-youtube {
-  background-color: hsl(175, 35%, 18%);
-  border-color: hsl(175, 30%, 28%);
+  background-color: var(--tile-youtube-bg-dark, hsl(175, 35%, 18%));
+  border-color: var(--tile-youtube-border-dark, hsl(175, 30%, 28%));
+}
+
+.dark .article-card-youtube:hover {
+  border-color: var(--tile-youtube-border-dark, hsl(175, 30%, 28%));
+  filter: brightness(1.1);
 }
 
 /* Article Cards - Podcast */
 .article-card-podcast {
-  background-color: hsl(270, 50%, 92%);
-  border-color: hsl(270, 45%, 80%);
+  background-color: var(--tile-podcast-bg-light, hsl(270, 50%, 92%));
+  border-color: var(--tile-podcast-border-light, hsl(270, 45%, 80%));
   box-shadow: 0 2px 6px rgba(147, 51, 234, 0.1);
   transition: all 0.3s ease-in-out;
 }
 
 .article-card-podcast:hover {
-  border-color: hsl(270, 50%, 70%);
+  border-color: var(--tile-podcast-border-light, hsl(270, 50%, 70%));
+  filter: brightness(0.97);
   box-shadow: 0 8px 20px rgba(147, 51, 234, 0.2);
 }
 
 .dark .article-card-podcast {
-  background-color: hsl(270, 40%, 20%);
-  border-color: hsl(270, 35%, 30%);
+  background-color: var(--tile-podcast-bg-dark, hsl(270, 40%, 20%));
+  border-color: var(--tile-podcast-border-dark, hsl(270, 35%, 30%));
+}
+
+.dark .article-card-podcast:hover {
+  border-color: var(--tile-podcast-border-dark, hsl(270, 35%, 30%));
+  filter: brightness(1.1);
 }
 
 /* Article Cards - Default */
 .article-card-default {
-  background-color: hsl(210, 65%, 93%);
-  border-color: hsl(210, 55%, 78%);
+  background-color: var(--tile-article-bg-light, hsl(210, 65%, 93%));
+  border-color: var(--tile-article-border-light, hsl(210, 55%, 78%));
   box-shadow: 0 2px 6px rgba(179, 179, 179, 0.15);
   transition: all 0.3s ease-in-out;
 }
 
 .article-card-default:hover {
-  border-color: hsl(210, 70%, 65%);
+  border-color: var(--tile-article-border-light, hsl(210, 70%, 65%));
+  filter: brightness(0.97);
   box-shadow: 0 8px 20px rgba(153, 153, 153, 0.25);
 }
 
 .dark .article-card-default {
-  background-color: hsl(220, 35%, 18%);
-  border-color: hsl(220, 30%, 26%);
+  background-color: var(--tile-article-bg-dark, hsl(220, 35%, 18%));
+  border-color: var(--tile-article-border-dark, hsl(220, 30%, 26%));
+}
+
+.dark .article-card-default:hover {
+  border-color: var(--tile-article-border-dark, hsl(220, 30%, 26%));
+  filter: brightness(1.1);
+}
+
+/* Content Type Pills - Dynamic colors matching tile palette */
+.content-pill-youtube {
+  background-color: var(--tile-youtube-bg-light, hsl(120, 40%, 92%));
+  border-color: var(--tile-youtube-border-light, hsl(120, 40%, 85%));
+  color: var(--tile-youtube-text-light, hsl(142, 70%, 20%));
+}
+
+.content-pill-youtube:hover {
+  filter: brightness(0.97);
+}
+
+.dark .content-pill-youtube {
+  background-color: var(--tile-youtube-bg-dark, hsl(175, 35%, 18%));
+  border-color: var(--tile-youtube-border-dark, hsl(175, 30%, 28%));
+  color: var(--tile-youtube-text-dark, hsl(150, 70%, 85%));
+}
+
+.dark .content-pill-youtube:hover {
+  filter: brightness(1.15);
+}
+
+.content-pill-youtube-active {
+  background-color: var(--tile-youtube-bg-light, hsl(120, 40%, 88%));
+  border-color: var(--tile-youtube-border-light, hsl(120, 40%, 78%));
+  color: var(--tile-youtube-text-light, hsl(142, 70%, 16%));
+  --tw-ring-color: var(--tile-youtube-border-light, hsl(120, 40%, 62%));
+}
+
+.dark .content-pill-youtube-active {
+  background-color: var(--tile-youtube-bg-dark, hsl(175, 35%, 24%));
+  border-color: var(--tile-youtube-border-dark, hsl(175, 30%, 36%));
+  color: var(--tile-youtube-text-dark, hsl(150, 80%, 90%));
+  --tw-ring-color: var(--tile-youtube-border-dark, hsl(175, 30%, 50%));
+}
+
+.content-pill-article {
+  background-color: var(--tile-article-bg-light, hsl(210, 65%, 93%));
+  border-color: var(--tile-article-border-light, hsl(210, 55%, 78%));
+  color: var(--tile-article-text-light, hsl(210, 70%, 20%));
+}
+
+.content-pill-article:hover {
+  filter: brightness(0.97);
+}
+
+.dark .content-pill-article {
+  background-color: var(--tile-article-bg-dark, hsl(220, 35%, 18%));
+  border-color: var(--tile-article-border-dark, hsl(220, 30%, 26%));
+  color: var(--tile-article-text-dark, hsl(210, 55%, 88%));
+}
+
+.dark .content-pill-article:hover {
+  filter: brightness(1.15);
+}
+
+.content-pill-article-active {
+  background-color: var(--tile-article-bg-light, hsl(210, 65%, 88%));
+  border-color: var(--tile-article-border-light, hsl(210, 65%, 70%));
+  color: var(--tile-article-text-light, hsl(210, 75%, 16%));
+  --tw-ring-color: var(--tile-article-border-light, hsl(210, 65%, 60%));
+}
+
+.dark .content-pill-article-active {
+  background-color: var(--tile-article-bg-dark, hsl(220, 35%, 24%));
+  border-color: var(--tile-article-border-dark, hsl(220, 30%, 34%));
+  color: var(--tile-article-text-dark, hsl(210, 65%, 92%));
+  --tw-ring-color: var(--tile-article-border-dark, hsl(220, 30%, 50%));
+}
+
+.content-pill-podcast {
+  background-color: var(--tile-podcast-bg-light, hsl(270, 50%, 92%));
+  border-color: var(--tile-podcast-border-light, hsl(270, 45%, 80%));
+  color: var(--tile-podcast-text-light, hsl(275, 70%, 22%));
+}
+
+.content-pill-podcast:hover {
+  filter: brightness(0.97);
+}
+
+.dark .content-pill-podcast {
+  background-color: var(--tile-podcast-bg-dark, hsl(270, 40%, 20%));
+  border-color: var(--tile-podcast-border-dark, hsl(270, 35%, 30%));
+  color: var(--tile-podcast-text-dark, hsl(280, 65%, 90%));
+}
+
+.dark .content-pill-podcast:hover {
+  filter: brightness(1.15);
+}
+
+.content-pill-podcast-active {
+  background-color: var(--tile-podcast-bg-light, hsl(270, 50%, 88%));
+  border-color: var(--tile-podcast-border-light, hsl(270, 50%, 70%));
+  color: var(--tile-podcast-text-light, hsl(275, 80%, 18%));
+  --tw-ring-color: var(--tile-podcast-border-light, hsl(270, 50%, 64%));
+}
+
+.dark .content-pill-podcast-active {
+  background-color: var(--tile-podcast-bg-dark, hsl(270, 40%, 26%));
+  border-color: var(--tile-podcast-border-dark, hsl(270, 35%, 38%));
+  color: var(--tile-podcast-text-dark, hsl(280, 75%, 92%));
+  --tw-ring-color: var(--tile-podcast-border-dark, hsl(270, 35%, 50%));
 }
 
 /* Article Cards - AI Trends */

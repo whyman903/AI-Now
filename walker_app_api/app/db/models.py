@@ -181,6 +181,12 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    display_preferences = relationship(
+        "UserDisplayPreference",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     __table_args__ = (
         UniqueConstraint("auth_provider", "provider_user_id", name="uq_users_provider_mapping"),
@@ -229,3 +235,17 @@ class UserRefreshToken(Base):
         Index("ix_user_refresh_tokens_user_id", "user_id"),
         Index("ix_user_refresh_tokens_active", "user_id", "revoked_at"),
     )
+
+
+class UserDisplayPreference(Base):
+    """Display preferences for a user including tile color palettes."""
+
+    __tablename__ = "user_display_preferences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    tile_color_palette = Column(String(50), nullable=False, server_default="default")
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="display_preferences")
