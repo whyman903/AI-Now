@@ -79,8 +79,7 @@ def aggregator(monkeypatch: pytest.MonkeyPatch, db_session_factory: sessionmaker
     """Create a fresh aggregator instance with isolated caches and patched thumbnail extraction."""
 
     agg = ContentAggregator()
-    agg._thumbnail_storage_dir = tmp_path / "thumbnails"
-
+    
     thumb_mock = AsyncMock(return_value="http://thumbs.local/example.jpg")
     monkeypatch.setattr(agg, "_extract_thumbnail", thumb_mock)
     return agg

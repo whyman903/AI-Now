@@ -85,7 +85,7 @@ async def _generate_ai_trends_summary() -> TrendingSummary:
     {search_context}
     
     INSTRUCTIONS:
-    - Select the top 5 most significant stories (model releases, major announcements, $500M+ funding, field-changing moves).
+    - Select the top FIVE (5) most significant stories (model releases, major announcements, $500M+ funding, field-changing moves).
     - SKIP: listicles, opinion pieces, minor enterprise deals, routine security patches, rate limits,"AI is changing X" fluff.
     - **No duplicates.** One story per event.
     - Start with "1." (numbered list). 1-2 sentences each.

@@ -10,7 +10,6 @@ import shutil
 import time
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -40,16 +39,6 @@ from app.services.aggregation_sources import (
 )
 from app.services.source_registry import SOURCES_BY_KEY
 
-STATIC_ROOT = Path(__file__).resolve().parents[2] / "static"
-YOUTUBE_THUMB_DIR = STATIC_ROOT / "thumbnails"
-THUMBNAIL_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-THUMBNAIL_ALLOWED_CONTENT_TYPES = {
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-}
-MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024  # 5MB safety cap
-
 logger = logging.getLogger(__name__)
 
 
@@ -65,15 +54,7 @@ class ContentAggregator:
         self._thumb_cache: OrderedDict[str, Optional[str]] = OrderedDict()
         self._thumb_cache_size = 256
         self._youtube_duration_cache: Dict[str, Optional[int]] = {}
-        self._thumbnail_storage_dir = YOUTUBE_THUMB_DIR
-        try:
-            self._thumbnail_storage_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as exc:
-            logger.warning("Unable to ensure thumbnail storage directory %s: %s", self._thumbnail_storage_dir, exc)
-        self._local_thumbnail_cache: OrderedDict[str, Optional[str]] = OrderedDict()
-        self._local_thumbnail_cache_size = 512
-        self._local_thumbnail_lock = asyncio.Lock()
-
+        
         # Default batching + mode configuration
         self.low_memory_mode = False
         self.web_scraper_batch_size = 3
@@ -612,7 +593,6 @@ class ContentAggregator:
         feed = feedparser.parse(response.text)
         channel_items: List[Dict[str, Any]] = []
         
-        cache_tasks: List[Tuple[int, asyncio.Task[Optional[str]]]] = []
         for entry in feed.entries[:10]:
             video_id = getattr(entry, "yt_videoid", None)
             if not video_id and hasattr(entry, "id") and isinstance(entry.id, str):
@@ -647,12 +627,7 @@ class ContentAggregator:
                 thumb = thumbs[0]["url"]
             if not thumb and video_id:
                 thumb = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-            cache_task: Optional[asyncio.Task[Optional[str]]] = None
-            if thumb and video_id:
-                cache_task = asyncio.create_task(
-                    self._cache_thumbnail_locally(thumb, f"youtube-{video_id}")
-                )
-
+            
             published_at = self._utcnow_naive()
             if getattr(entry, "published_parsed", None):
                 try:
@@ -682,18 +657,6 @@ class ContentAggregator:
                     "meta_data": meta,
                 }
             )
-            if cache_task:
-                cache_tasks.append((len(channel_items) - 1, cache_task))
-
-        if cache_tasks:
-            for index, task in cache_tasks:
-                try:
-                    local_thumb = await task
-                except Exception as exc:
-                    logger.debug("Thumbnail cache task failed for %s: %s", channel["name"], exc)
-                    continue
-                if local_thumb:
-                    channel_items[index]["thumbnail_url"] = local_thumb
         elapsed = time.perf_counter() - start
         logger.info(
             "YouTube channel %s yielded %s videos in %.2fs",
@@ -744,82 +707,6 @@ class ContentAggregator:
 
         self._youtube_duration_cache[video_id] = duration
         return duration
-
-    async def _remember_local_thumbnail(self, cache_key: str, value: Optional[str]) -> None:
-        async with self._local_thumbnail_lock:
-            self._local_thumbnail_cache[cache_key] = value
-            self._local_thumbnail_cache.move_to_end(cache_key)
-            if len(self._local_thumbnail_cache) > self._local_thumbnail_cache_size:
-                self._local_thumbnail_cache.popitem(last=False)
-
-    async def _get_cached_local_thumbnail(self, cache_key: str) -> Tuple[bool, Optional[str]]:
-        async with self._local_thumbnail_lock:
-            if cache_key in self._local_thumbnail_cache:
-                value = self._local_thumbnail_cache[cache_key]
-                self._local_thumbnail_cache.move_to_end(cache_key)
-                return True, value
-            return False, None
-
-    async def _cache_thumbnail_locally(self, url: str, cache_key: str) -> Optional[str]:
-        if not url or not cache_key or not self._thumbnail_storage_dir:
-            return None
-
-        cache_hit, cached_value = await self._get_cached_local_thumbnail(cache_key)
-        if cache_hit:
-            return cached_value
-
-        safe_key = re.sub(r"[^a-zA-Z0-9_-]", "-", cache_key).strip("-") or "thumb"
-        parsed = urlparse(url)
-        ext = os.path.splitext(parsed.path)[1].lower()
-        if ext not in THUMBNAIL_ALLOWED_EXTENSIONS:
-            ext = ".jpg"
-        filename = f"{safe_key}{ext}"
-        local_path = self._thumbnail_storage_dir / filename
-
-        if local_path.exists():
-            relative_url = f"/static/thumbnails/{filename}"
-            await self._remember_local_thumbnail(cache_key, relative_url)
-            return relative_url
-
-        try:
-            response = await self._get(url)
-        except Exception as exc:
-            logger.debug("Failed downloading thumbnail %s: %s", url, exc)
-            await self._remember_local_thumbnail(cache_key, None)
-            return None
-
-        if response.status_code != 200 or not response.content:
-            logger.debug("Thumbnail request for %s returned HTTP %s", url, response.status_code)
-            await self._remember_local_thumbnail(cache_key, None)
-            return None
-
-        content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
-        if content_type and content_type not in THUMBNAIL_ALLOWED_CONTENT_TYPES:
-            logger.debug("Rejected thumbnail %s due to unsupported content-type %s", url, content_type)
-            await self._remember_local_thumbnail(cache_key, None)
-            return None
-
-        content = response.content
-        if len(content) > MAX_THUMBNAIL_BYTES:
-            logger.warning(
-                "Rejected thumbnail %s because content length %s exceeds %s bytes",
-                url,
-                len(content),
-                MAX_THUMBNAIL_BYTES,
-            )
-            await self._remember_local_thumbnail(cache_key, None)
-            return None
-
-        try:
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            await asyncio.to_thread(local_path.write_bytes, content)
-            relative_url = f"/static/thumbnails/{filename}"
-            await self._remember_local_thumbnail(cache_key, relative_url)
-            return relative_url
-        except Exception as exc:
-            logger.warning("Unable to persist thumbnail %s to %s: %s", url, local_path, exc)
-            await self._remember_local_thumbnail(cache_key, None)
-            return None
 
     async def _aggregate_web_scrapers(self) -> Dict[str, Any]:
         logger.info("Aggregating Selenium/BeautifulSoup sources...")
@@ -1188,7 +1075,8 @@ class ContentAggregator:
                     if payload.get("author") and not existing.author:
                         existing.author = payload["author"]
                         changed = True
-                    if payload.get("thumbnail_url") and not existing.thumbnail_url:
+                    # Always update thumbnail if provided and different, to allow fixing broken local links or updating to higher res
+                    if payload.get("thumbnail_url") and existing.thumbnail_url != payload["thumbnail_url"]:
                         existing.thumbnail_url = payload["thumbnail_url"]
                         changed = True
                     if meta:
