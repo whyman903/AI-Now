@@ -236,3 +236,6 @@ celerybeat.pid
 # Local agent documentation
 /agents.md
 walker_app_api/app/services/aggregation_sources/agents.md
+
+# Downloaded thumbnails (generated at runtime)
+walker_app_api/static/thumbnails/

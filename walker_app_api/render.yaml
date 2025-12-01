@@ -22,6 +22,8 @@ services:
         fromDatabase:
           name: walker-app-db
           property: connectionString
+      - key: PUBLIC_BASE_URL
+        value: "https://ai-now.onrender.com"
       - key: CORS_ORIGINS
         value: "https://ai-now.vercel.app,http://localhost:5173"
       - key: LOG_LEVEL
