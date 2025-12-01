@@ -108,16 +108,23 @@ class ContentAggregator:
             "/usr/bin/chromium",
             "/usr/bin/google-chrome",
             "/usr/bin/google-chrome-stable",
+            # Common paths on macOS
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
         ]
         for candidate in chrome_candidates:
             if candidate and os.path.exists(candidate):
                 logger.info("Found Chrome/Chromium at: %s", candidate)
+                if not settings.CHROME_BINARY_PATH:
+                    settings.CHROME_BINARY_PATH = candidate
                 return True
 
         for binary in ("google-chrome", "chromium", "chromium-browser", "chrome", "google-chrome-stable"):
             path = shutil.which(binary)
             if path:
                 logger.info("Found Chrome/Chromium in PATH: %s", path)
+                if not settings.CHROME_BINARY_PATH:
+                    settings.CHROME_BINARY_PATH = path
                 return True
 
         logger.warning(

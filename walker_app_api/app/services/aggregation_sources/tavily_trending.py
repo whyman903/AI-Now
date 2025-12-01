@@ -123,7 +123,7 @@ async def scrape_async() -> List[Dict[str, Any]]:
 
     digest = trends.markdown_news_digest.strip()
     timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
-    print(digest)
+    #print(digest)
     return [
         {
             "title": "AI Trends Digest",

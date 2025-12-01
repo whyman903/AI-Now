@@ -87,6 +87,8 @@ def create_chrome_driver(
     opts.add_experimental_option("useAutomationExtension", False)
     opts.add_argument("accept-language=en-US,en;q=0.9")
     opts.add_argument(f"user-agent={DEFAULT_USER_AGENT}")
+    if settings.CHROME_BINARY_PATH:
+        opts.binary_location = settings.CHROME_BINARY_PATH
     for arg in extra_args or []:
         opts.add_argument(arg)
 
