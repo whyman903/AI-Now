@@ -435,7 +435,7 @@ export default function Home() {
             {hasActiveFilters && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2.5 text-sm">
                 <span>
-                  Filters applied{activeFilterSummary ? ` — ${activeFilterSummary}` : ""}.
+                  Filters applied{activeFilterSummary ? ` — ${activeFilterSummary}` : ""}
                 </span>
                 <button
                   onClick={clearAllFilters}
