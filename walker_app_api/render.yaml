@@ -31,6 +31,8 @@ services:
       - key: LOG_FORMAT
         value: json
       - key: CHROME_BINARY_PATH
-        value: /usr/bin/chromium-browser
+        value: /usr/bin/chromium
+      - key: GOOGLE_CHROME_BIN
+        value: /usr/bin/chromium
       - key: AGGREGATION_SERVICE_TOKEN
         generateValue: true
