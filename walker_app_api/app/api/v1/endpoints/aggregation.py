@@ -2,20 +2,36 @@
 Content aggregation endpoints for triggering and monitoring content collection.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
-from typing import Dict, Any
 import logging
+from typing import Any, Dict, List, Optional
 
-from app.services.content_aggregator import get_content_aggregator
-from app.crud.content import ContentCRUD
-from app.db.base import get_db
-from fastapi import Depends
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_aggregation_token
+from app.crud.content import ContentCRUD
+from app.db.base import get_db
+from app.services.content_aggregator import get_content_aggregator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class IngestItem(BaseModel):
+    title: str
+    url: str
+    author: Optional[str] = None
+    published_at: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    type: str = "article"
+    meta_data: Optional[Dict[str, Any]] = None
+    source_key: Optional[str] = None
+
+
+class IngestRequest(BaseModel):
+    source_key: str
+    items: List[IngestItem]
 
 
 @router.post(
@@ -93,3 +109,32 @@ async def get_aggregation_status(db: Session = Depends(get_db)) -> Dict[str, Any
     except Exception as e:
         logger.error(f"Error getting aggregation status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/ingest",
+    dependencies=[Depends(require_aggregation_token)],
+)
+async def ingest_scraped_content(payload: IngestRequest) -> Dict[str, Any]:
+    """Accept pre-scraped items (e.g. from GitHub Actions) and persist them."""
+    items = [
+        {**item.model_dump(), "source_key": payload.source_key}
+        for item in payload.items
+    ]
+
+    aggregator = get_content_aggregator()
+    stats = await aggregator._persist_items(items)
+
+    logger.info(
+        "Ingested %d items for source %s (added=%d, updated=%d)",
+        len(items),
+        payload.source_key,
+        stats["items_added"],
+        stats["items_updated"],
+    )
+
+    return {
+        "status": "success",
+        "source_key": payload.source_key,
+        **stats,
+    }

@@ -155,7 +155,7 @@ class ContentAggregator:
     def _initialize_web_scraper_sources(self) -> None:
         configured_sources = [
             self._source_config("scrape_anthropic", scrape_func=anthropic_agg.scrape, requires_selenium=True),
-            self._source_config("scrape_deepseek", scrape_func=deepseek_agg.scrape, requires_selenium=True),
+            self._source_config("scrape_deepseek", scrape_func=deepseek_agg.scrape),
             self._source_config("scrape_xai", scrape_func=xai_agg.scrape, requires_selenium=True),
             self._source_config("scrape_qwen", scrape_func=qwen_agg.scrape),
             self._source_config("scrape_moonshot", scrape_func=moonshot_agg.scrape, requires_selenium=True),

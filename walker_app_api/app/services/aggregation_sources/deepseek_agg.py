@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from urllib.parse import urljoin
@@ -11,10 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
 from xml.etree import ElementTree as ET
-from selenium import webdriver
-
 from ._lab_scraper_utils import (
-    create_chrome_driver,
     ensure_naive_utc,
     make_lab_item,
     normalize_whitespace,
@@ -56,17 +52,6 @@ ATOM_NS = "{http://www.w3.org/2005/Atom}"
 
 logger = logging.getLogger(__name__)
 
-
-def _fetch_page(url: str = PAGE_URL) -> str:
-    """Fetch the DeepSeek page using Selenium to bypass 403 blocking."""
-    driver = create_chrome_driver(headless=True, window_size="1400,1000")
-    try:
-        driver.get(url)
-        # Give the page a moment to render any JavaScript content
-        time.sleep(2)
-        return driver.page_source
-    finally:
-        driver.quit()
 
 def _absolutize(url: str) -> str:
     if url.startswith("//"):

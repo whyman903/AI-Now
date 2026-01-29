@@ -89,7 +89,7 @@ async def _generate_ai_trends_summary() -> TrendingSummary:
     - SKIP: listicles, opinion pieces, minor enterprise deals, routine security patches, rate limits,"AI is changing X" fluff.
     - **No duplicates.** One story per event.
     - Start with "1." (numbered list). 1-2 sentences each.
-    - **Bold key names/terms**. End with [Source](URL) YYYY/MM/DD.
+    - **Bold key names/terms**. End with [Source](URL) MM/DD/YYYY.
     
     Example:
     1. Anthropic released **Claude Opus 4.5**, claiming 50% improvement on SWE-bench. [TechCrunch](https://techcrunch.com/...) 11/28/2025.

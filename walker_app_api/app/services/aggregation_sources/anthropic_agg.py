@@ -32,11 +32,10 @@ def build_driver(headless: bool = True) -> webdriver.Chrome:
     return create_chrome_driver(headless=headless, window_size="1400,1400")
 
 def wait_for_cards(driver, timeout=25):
-    sel = ("a[class*='PublicationList_listItem__'],"
-           "a.PostCard_post-card__z_Sqq,"
-           "a[class*='PostCard_post-card__'],"
-           "a.Card_linkRoot__alQfM,"
-           "a[class*='Card_linkRoot__']")
+    # Updated selectors for new Anthropic site structure (Dec 2025)
+    sel = ("a[class*='PublicationList-module-scss-module'][class*='listItem'],"
+           "a[class*='FeaturedGrid-module-scss-module'][class*='content'],"
+           "a[class*='FeaturedGrid-module-scss-module'][class*='sideLink']")
     WebDriverWait(driver, timeout).until(
         EC.presence_of_element_located((By.CSS_SELECTOR, sel))
     )
@@ -75,14 +74,29 @@ def pick_best_src_from_srcset(srcset: str) -> str | None:
     return last
 
 def extract_from_html(html: str):
+    """
+    Extract items from HTML using updated selectors for Anthropic's Dec 2025 site redesign.
+    Supports:
+      - FeaturedGrid items (main featured content + sidebar)
+      - PublicationList items (news/research list)
+    """
     soup = BeautifulSoup(html, "html.parser")
     items, seen = [], set()
 
+    # Updated selectors for new site structure
     anchors = soup.select(
-        "a[class*='PublicationList_listItem__'], "
-        "a.PostCard_post-card__z_Sqq, a[class*='PostCard_post-card__'], "
-        "a.Card_linkRoot__alQfM, a[class*='Card_linkRoot__']"
+        "a[class*='PublicationList-module-scss-module'][class*='listItem'], "
+        "a[class*='FeaturedGrid-module-scss-module'][class*='content'], "
+        "a[class*='FeaturedGrid-module-scss-module'][class*='sideLink']"
     )
+
+    # Get aside image for PublicationList items (hover preview)
+    aside_img = soup.select_one("aside[class*='PublicationList-module-scss-module'] img")
+    aside_img_src = None
+    if aside_img:
+        aside_img_src = aside_img.get("src")
+        if aside_img_src and aside_img_src.startswith("/"):
+            aside_img_src = urljoin(BASE, aside_img_src)
 
     for a in anchors:
         href = a.get("href")
@@ -92,39 +106,39 @@ def extract_from_html(html: str):
         if url in seen:
             continue
 
-        title_node = a.select_one("span[class*='PublicationList_title__']")
+        classes = " ".join(a.get("class", []))
+        is_featured = "FeaturedGrid" in classes
+        is_publist = "PublicationList" in classes
+
+        # Extract title - handle different layouts for news vs research pages
+        title_node = None
+        if is_publist:
+            title_node = a.select_one("span[class*='title']")
+        if not title_node and is_featured:
+            # News page uses h2/h3 with 'headline' or 'featuredTitle' classes
+            # Research page uses h4 with 'title' class
+            title_node = a.select_one(
+                "h2[class*='featuredTitle'], h3[class*='headline'], "
+                "h4[class*='title'], h3[class*='title']"
+            )
         if not title_node:
-            title_node = a.select_one("h3.PostCard_post-heading__Ob1pu, h3[class*='PostCard_post-heading__']")
-        if not title_node:
-            title_node = a.select_one("h3.Card_headline__reaoT, h3[class*='Card_headline__']")
-        if not title_node:
-            title_node = a.select_one("h3, span[role='heading']")
+            title_node = a.select_one("h2, h3, h4, span[class*='title']")
         title = (
             normalize_whitespace(title_node.get_text(strip=True))
             if title_node
             else None
         )
 
-        date_node = a.select_one("time[class*='PublicationList_date__']")
-        if not date_node:
-            date_node = a.select_one("div.PostList_post-date__djrOA, div[class*='PostList_post-date__']")
-        if not date_node:
-            date_node = a.select_one("p.detail-m.agate")
-        if not date_node:
-            date_node = a.select_one("time[datetime], time")
-        date_text = (
-            date_node.get("datetime")
-            if (date_node and date_node.name == "time" and date_node.has_attr("datetime"))
-            else (
-                normalize_whitespace(date_node.get_text(strip=True))
-                if date_node
-                else None
-            )
-        )
+        # Extract date
+        date_node = a.select_one("time")
+        date_text = None
+        if date_node:
+            date_text = date_node.get("datetime") or normalize_whitespace(date_node.get_text(strip=True))
         date_iso, date_display = parse_date_text(date_text)
 
-        img = a.select_one("img")
+        # Extract thumbnail
         thumbnail = None
+        img = a.select_one("img")
         if img:
             if img.has_attr("srcset"):
                 best = pick_best_src_from_srcset(img["srcset"])
@@ -133,6 +147,9 @@ def extract_from_html(html: str):
                 thumbnail = img.get("src")
         if thumbnail and thumbnail.startswith("/"):
             thumbnail = urljoin(BASE, thumbnail)
+        # For PublicationList items without inline images, use the aside preview
+        if not thumbnail and is_publist and aside_img_src:
+            thumbnail = aside_img_src
 
         items.append({
             "title": title,
@@ -152,20 +169,18 @@ def extract_items_with_driver(driver: webdriver.Chrome) -> List[Dict[str, Any]]:
     """
     Extract items using live DOM so we can hover each list item and capture the
     corresponding aside illustration image that only appears/updates on hover.
+    
+    Updated for Anthropic's Dec 2025 site redesign with new class naming.
     """
     items: List[Dict[str, Any]] = []
     seen: set[str] = set()
+    # Updated selectors for new site structure
     anchor_selector = (
-        "a[class*='PublicationList_listItem__'],"
-        "a.PostCard_post-card__z_Sqq,"
-        "a[class*='PostCard_post-card__'],"
-        "a.Card_linkRoot__alQfM,"
-        "a[class*='Card_linkRoot__']"
+        "a[class*='PublicationList-module-scss-module'][class*='listItem'],"
+        "a[class*='FeaturedGrid-module-scss-module'][class*='content'],"
+        "a[class*='FeaturedGrid-module-scss-module'][class*='sideLink']"
     )
-    aside_img_selector = (
-        "aside[class*='PublicationList_aside__'] img,"
-        "div[class*='PublicationList_illustrationContainer__'] img"
-    )
+    aside_img_selector = "aside[class*='PublicationList-module-scss-module'] img"
     anchors = driver.find_elements(By.CSS_SELECTOR, anchor_selector)
     actions = ActionChains(driver)
     last_img_src: str | None = None
@@ -182,17 +197,32 @@ def extract_items_with_driver(driver: webdriver.Chrome) -> List[Dict[str, Any]]:
             if url in seen:
                 continue
 
-            # Title
+            classes = a.get_attribute("class") or ""
+            is_featured = "FeaturedGrid" in classes
+            is_publist = "PublicationList" in classes
+
+            # Title extraction - handle different layouts for news vs research pages
             title_text = None
             try:
-                title_el = a.find_element(By.CSS_SELECTOR, "span[class*='PublicationList_title__']")
+                if is_publist:
+                    title_el = a.find_element(By.CSS_SELECTOR, "span[class*='title']")
+                elif is_featured:
+                    # News page uses h2/h3, research page uses h4 with 'title' class
+                    title_el = a.find_element(By.CSS_SELECTOR, 
+                        "h2[class*='featuredTitle'], h3[class*='headline'], "
+                        "h4[class*='title'], h3[class*='title']"
+                    )
+                else:
+                    title_el = a.find_element(By.CSS_SELECTOR, "h2, h3, h4, span[class*='title']")
+                if title_el:
+                    title_text = normalize_whitespace(title_el.text)
             except Exception:
                 try:
-                    title_el = a.find_element(By.CSS_SELECTOR, "h3, span[role='heading']")
+                    title_el = a.find_element(By.CSS_SELECTOR, "h2, h3, h4")
+                    if title_el:
+                        title_text = normalize_whitespace(title_el.text)
                 except Exception:
-                    title_el = None
-            if title_el:
-                title_text = normalize_whitespace(title_el.text)
+                    pass
 
             # Date (prefer visible time text)
             date_iso, date_display = None, None
@@ -204,32 +234,43 @@ def extract_items_with_driver(driver: webdriver.Chrome) -> List[Dict[str, Any]]:
                 pass
             date_iso, date_display = parse_date_text(date_text)
 
-            # Hover to update aside illustration and capture thumbnail
+            # Thumbnail extraction
             thumbnail = None
+            
+            # First try inline images (for FeaturedGrid items)
             try:
-                actions.move_to_element(a).perform()
-                # Wait briefly for aside image to reflect the hovered item
-                end_time = time.time() + 3.0
-                while time.time() < end_time:
-                    imgs = driver.find_elements(By.CSS_SELECTOR, aside_img_selector)
-                    if imgs:
-                        img = imgs[0]
-                        alt = normalize_whitespace(img.get_attribute("alt") or "")
-                        src = img.get_attribute("src") or ""
-                        if title_text and alt and alt == title_text and src:
-                            thumbnail = src
-                            break
-                        # Fallback: accept a changed src even if alt doesn't match exactly
-                        if src and src != last_img_src:
-                            thumbnail = src
-                            break
-                    time.sleep(0.1)
-                if thumbnail:
-                    last_img_src = thumbnail
-                    if thumbnail.startswith("/"):
-                        thumbnail = urljoin(BASE, thumbnail)
+                img = a.find_element(By.CSS_SELECTOR, "img")
+                src = img.get_attribute("src")
+                if src:
+                    thumbnail = src
             except Exception:
                 pass
+
+            # For PublicationList items, hover to capture aside preview image
+            if not thumbnail and is_publist:
+                try:
+                    actions.move_to_element(a).perform()
+                    end_time = time.time() + 2.0
+                    while time.time() < end_time:
+                        imgs = driver.find_elements(By.CSS_SELECTOR, aside_img_selector)
+                        if imgs:
+                            img = imgs[0]
+                            alt = normalize_whitespace(img.get_attribute("alt") or "")
+                            src = img.get_attribute("src") or ""
+                            if title_text and alt and alt == title_text and src:
+                                thumbnail = src
+                                break
+                            if src and src != last_img_src:
+                                thumbnail = src
+                                break
+                        time.sleep(0.1)
+                    if thumbnail:
+                        last_img_src = thumbnail
+                except Exception:
+                    pass
+
+            if thumbnail and thumbnail.startswith("/"):
+                thumbnail = urljoin(BASE, thumbnail)
 
             items.append({
                 "title": title_text,
