@@ -28,6 +28,7 @@ jobs:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           AGGREGATION_SERVICE_TOKEN: ${{ secrets.AGGREGATION_SERVICE_TOKEN }}
           PYTHONPATH: walker_app_api
+          DATABASE_URL: "sqlite:///:memory:"
         run: python scripts/run_selenium_scrapers.py
 
   trigger-api-aggregation:
