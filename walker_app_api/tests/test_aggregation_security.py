@@ -58,7 +58,7 @@ class TestAggregationAuthentication:
 
     def test_trigger_aggregation_with_valid_token(self, client, valid_token):
         """Should return 200 when token is valid."""
-        with patch('app.services.content_aggregator.ContentAggregator.aggregate_all_content'):
+        with patch('app.services.aggregation.aggregator.ContentAggregator.aggregate_all_content'):
             response = client.post(
                 "/api/v1/aggregation/trigger",
                 headers={"X-Aggregation-Token": valid_token}

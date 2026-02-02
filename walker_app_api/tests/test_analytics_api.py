@@ -31,7 +31,7 @@ class DummyAggregator:
 @pytest.fixture
 def api_client(sessionmaker_fixture, analytics_queue_stub, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     from app.api.v1.endpoints import items as items_module
-    from app.services import content_aggregator as agg_module
+    from app.services.aggregation import aggregator as agg_module
     from app.crud import analytics as analytics_crud
     from walker_app_api import main
 

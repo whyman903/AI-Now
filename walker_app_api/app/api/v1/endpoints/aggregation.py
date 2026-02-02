@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_aggregation_token
 from app.crud.content import ContentCRUD
 from app.db.base import get_db
-from app.services.content_aggregator import get_content_aggregator
+from app.services.aggregation.aggregator import get_content_aggregator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -92,10 +92,9 @@ async def get_aggregation_status(db: Session = Depends(get_db)) -> Dict[str, Any
 
         agg = get_content_aggregator()
         sources_summary = {
-            'rss_feeds': len(agg.rss_sources),
-            'youtube_channels': len(agg.youtube_channels),
-            'web_scrapers': len(agg.web_scraper_sources),
-            'total': len(agg.rss_sources) + len(agg.youtube_channels) + len(agg.web_scraper_sources),
+            'non_selenium': agg.non_selenium_source_count,
+            'selenium': agg.selenium_source_count,
+            'total': agg.source_count,
         }
 
         return {

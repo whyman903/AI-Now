@@ -249,3 +249,43 @@ class UserDisplayPreference(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", back_populates="display_preferences")
+
+
+class AggregationSource(Base):
+    """Configuration and state for content aggregation sources."""
+
+    __tablename__ = "aggregation_sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    key = Column(String(100), nullable=False, unique=True)
+    name = Column(String(255), nullable=False)
+    source_type = Column(String(20), nullable=False)
+    category = Column(String(50), nullable=False)
+    content_types = Column(JSON, nullable=False)
+
+    url = Column(Text)
+    selectors = Column(JSON)
+    url_prefix = Column(String(500))
+    requires_js = Column(Boolean, nullable=False, server_default="false")
+    extraction_method = Column(String(20), nullable=False, server_default="css_selectors")
+    feed_url = Column(Text)
+    llm_analysis = Column(JSON)
+
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    enabled = Column(Boolean, nullable=False, server_default="true")
+    default_enabled = Column(Boolean, nullable=False, server_default="true")
+
+    last_run_at = Column(DateTime)
+    last_error = Column(Text)
+    last_item_count = Column(Integer)
+    run_count = Column(Integer, nullable=False, server_default="0")
+    needs_refresh = Column(Boolean, nullable=False, server_default="false")
+
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_agg_sources_type", "source_type"),
+        Index("ix_agg_sources_enabled", "enabled"),
+        Index("ix_agg_sources_user", "created_by"),
+    )

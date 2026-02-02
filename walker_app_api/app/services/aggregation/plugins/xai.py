@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+"""xAI blog scraper plugin."""
 import re
 import time
 from datetime import datetime
@@ -14,13 +14,10 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from ._lab_scraper_utils import (
-    autoscroll_page,
-    create_chrome_driver,
-    make_lab_item,
-    normalize_whitespace,
-    parse_datetime,
-)
+from app.services.aggregation.registry import register
+from app.services.aggregation.utils.date_parser import parse_date
+from app.services.aggregation.utils.html import make_item, normalize_whitespace
+from app.services.aggregation.utils.webdriver import autoscroll_page, create_chrome_driver
 
 BASE = "https://x.ai"
 START_URL = "https://x.ai/news"
@@ -32,18 +29,19 @@ MONTH_NAME_RE = re.compile(
 )
 YEAR_RE = re.compile(r"\b\d{4}\b")
 
+
 def build_driver(headless: bool = True) -> webdriver.Chrome:
     return create_chrome_driver(headless=headless, window_size="1400,1000")
+
 
 def wait_for_news(driver, timeout=20):
     sel = "a[href^='/news/'] h3"
     WebDriverWait(driver, timeout).until(EC.presence_of_element_located((By.CSS_SELECTOR, sel)))
 
+
 def autoscroll_to_bottom(driver, pause=0.8, max_tries=16):
     autoscroll_page(driver, pause=pause, max_attempts=max_tries)
 
-def normalize(value: str | None) -> str | None:
-    return normalize_whitespace(value)
 
 def extract_bg_url(style_value: str) -> str | None:
     if not style_value:
@@ -63,7 +61,8 @@ def _looks_like_date_text(text: str | None) -> bool:
         return True
     return False
 
-def parse_date(d: str) -> tuple[str | None, str | None]:
+
+def _parse_date_local(d: str) -> tuple[str | None, str | None]:
     if not d:
         return None, None
     d_disp = normalize_whitespace(d)
@@ -78,6 +77,7 @@ def parse_date(d: str) -> tuple[str | None, str | None]:
             return dt.isoformat(), d_disp
         except Exception:
             return None, d_disp
+
 
 def extract_from_html(html: str):
     soup = BeautifulSoup(html, "html.parser")
@@ -94,9 +94,9 @@ def extract_from_html(html: str):
             continue
 
         h3 = a.find("h3")
-        title = normalize(h3.get_text(strip=True)) if h3 else None
+        title = normalize_whitespace(h3.get_text(strip=True)) if h3 else None
         if not title:
-            title = normalize(a.get_text(strip=True)) or None
+            title = normalize_whitespace(a.get_text(strip=True)) or None
 
         wrapper = None
         background_parent: Tag | None = None
@@ -114,7 +114,7 @@ def extract_from_html(html: str):
             )
             for node in candidate_nodes:
                 raw_text = node.get("datetime") if node.name == "time" else node.get_text(" ", strip=True)
-                if _looks_like_date_text(normalize(raw_text)):
+                if _looks_like_date_text(normalize_whitespace(raw_text)):
                     wrapper = cur
                     break
             if wrapper:
@@ -144,10 +144,10 @@ def extract_from_html(html: str):
 
         for node in candidates:
             raw = node.get("datetime") if node.name == "time" else node.get_text(" ", strip=True)
-            raw = normalize(raw)
+            raw = normalize_whitespace(raw)
             if not raw:
                 continue
-            iso, disp = parse_date(raw)
+            iso, disp = _parse_date_local(raw)
             if iso:
                 date_iso, date_display = iso, disp
                 break
@@ -171,16 +171,22 @@ def extract_from_html(html: str):
             "date_display": date_display,
             "thumbnail": thumbnail,
             "url": url,
-            "author": 'xAI',
-            "type": "research_lab"
+            "author": "xAI",
+            "type": "research_lab",
         })
         seen_urls.add(url)
 
     return items
 
 
+@register(
+    key="scrape_xai",
+    name="xAI",
+    category="frontier_model",
+    content_types=["research_lab", "article"],
+    requires_selenium=True,
+)
 def scrape(headless: bool = True) -> List[Dict[str, Any]]:
-    """Scrape xAI news posts and return normalized content items."""
     driver = build_driver(headless=headless)
     try:
         driver.get(START_URL)
@@ -201,9 +207,9 @@ def scrape(headless: bool = True) -> List[Dict[str, Any]]:
         url = item.get("url")
         if not title or not url:
             continue
-        published_at = parse_datetime(item.get("date_iso") or item.get("date_display"))
+        published_at = parse_date(item.get("date_iso") or item.get("date_display"))
         normalized.append(
-            make_lab_item(
+            make_item(
                 title=title,
                 url=url,
                 author=item.get("author") or "xAI",

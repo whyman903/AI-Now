@@ -19,7 +19,7 @@ from app.schemas.preferences import (
     VALID_PALETTES,
 )
 from app.services.preference_service import PreferenceService, UnknownSourceError
-from app.services.source_registry import list_sources
+from app.services.aggregation.registry import list_sources
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

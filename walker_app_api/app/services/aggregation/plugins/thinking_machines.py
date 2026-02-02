@@ -1,4 +1,4 @@
-"""Scraper for Thinking Machines Lab's research blog."""
+"""Thinking Machines blog scraper plugin."""
 from __future__ import annotations
 
 import logging
@@ -9,7 +9,9 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
-from ._lab_scraper_utils import make_lab_item, normalize_whitespace, parse_datetime
+from app.services.aggregation.registry import register
+from app.services.aggregation.utils.date_parser import parse_date
+from app.services.aggregation.utils.html import make_item, normalize_whitespace
 
 BASE_URL = "https://thinkingmachines.ai"
 LISTING_URL = f"{BASE_URL}/blog/"
@@ -30,10 +32,6 @@ TIMEOUT = httpx.Timeout(15.0)
 logger = logging.getLogger(__name__)
 
 
-class ThinkingMachinesScrapeError(RuntimeError):
-    """Raised when the Thinking Machines scraper encounters a fatal error."""
-
-
 def _absolute_url(url: str) -> str:
     if not url:
         return url
@@ -49,7 +47,6 @@ def _fetch_html(client: httpx.Client, url: str) -> str:
 def _extract_article_details(
     client: httpx.Client, article_url: str
 ) -> tuple[Optional[datetime], Optional[str], Optional[str]]:
-    """Fetch the article page to capture canonical metadata."""
     try:
         html = _fetch_html(client, article_url)
     except httpx.HTTPError as exc:
@@ -75,54 +72,56 @@ def _extract_article_details(
     if thumb_meta and thumb_meta.get("content"):
         article_image = _absolute_url(thumb_meta["content"].strip())
 
-    published_at = parse_datetime(published_iso)
+    published_at = parse_date(published_iso)
 
     return published_at, summary, article_image
 
 
+@register(
+    key="scrape_thinking_machines",
+    name="Thinking Machines",
+    category="frontier_model",
+    content_types=["article"],
+)
 def scrape() -> List[Dict[str, Any]]:
-    """Scrape posts from the Thinking Machines blog."""
     items: List[Dict[str, Any]] = []
-    try:
-        with httpx.Client(headers=HEADERS, follow_redirects=True) as client:
-            listing_html = _fetch_html(client, LISTING_URL)
-            soup = BeautifulSoup(listing_html, "html.parser")
+    with httpx.Client(headers=HEADERS, follow_redirects=True) as client:
+        listing_html = _fetch_html(client, LISTING_URL)
+        soup = BeautifulSoup(listing_html, "html.parser")
 
-            for anchor in soup.select("a.post-item-link"):
-                href = anchor.get("href")
-                url = _absolute_url(href) if href else None
-                if not url:
-                    logger.debug("Thinking Machines: skipping entry without href")
-                    continue
+        for anchor in soup.select("a.post-item-link"):
+            href = anchor.get("href")
+            url = _absolute_url(href) if href else None
+            if not url:
+                continue
 
-                title_el = anchor.select_one(".post-title")
-                title = normalize_whitespace(title_el.get_text()) if title_el else None
-                if not title:
-                    logger.debug("Thinking Machines: skipping %s due to missing title", url)
-                    continue
+            title_el = anchor.select_one(".post-title")
+            title = normalize_whitespace(title_el.get_text()) if title_el else None
+            if not title:
+                continue
 
-                date_text_el = anchor.select_one("time.desktop-time") or anchor.select_one("time")
-                date_text = normalize_whitespace(date_text_el.get_text()) if date_text_el else None
+            date_text_el = anchor.select_one("time.desktop-time") or anchor.select_one("time")
+            date_text = normalize_whitespace(date_text_el.get_text()) if date_text_el else None
 
-                published_at, summary, article_image = _extract_article_details(client, url)
+            published_at, summary, article_image = _extract_article_details(client, url)
 
-                # When the article page omits structured dates we fall back to listing text.
-                date_display = None
-                if published_at:
-                    try:
-                        date_display = published_at.strftime("%b %d, %Y")
-                    except Exception:  # pragma: no cover - defensive
-                        date_display = None
+            date_display = None
+            if published_at:
+                try:
+                    date_display = published_at.strftime("%b %d, %Y")
+                except Exception:
+                    date_display = None
 
-                extra_meta: Dict[str, Any] = {}
-                if summary:
-                    extra_meta["summary"] = summary
-                if article_image:
-                    extra_meta["article_image"] = article_image
-                if date_text and not date_display:
-                    extra_meta["listing_date_text"] = date_text
+            extra_meta: Dict[str, Any] = {}
+            if summary:
+                extra_meta["summary"] = summary
+            if article_image:
+                extra_meta["article_image"] = article_image
+            if date_text and not date_display:
+                extra_meta["listing_date_text"] = date_text
 
-                item = make_lab_item(
+            items.append(
+                make_item(
                     title=title,
                     url=url,
                     author="Thinking Machines",
@@ -134,12 +133,6 @@ def scrape() -> List[Dict[str, Any]]:
                     date_display=date_display,
                     extra_meta=extra_meta or None,
                 )
-                items.append(item)
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.exception("Thinking Machines scraper failed: %s", exc)
-        raise ThinkingMachinesScrapeError(str(exc)) from exc
+            )
 
     return items
-
-
-__all__ = ["scrape"]

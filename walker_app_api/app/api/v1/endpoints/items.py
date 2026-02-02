@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Dict, Any
-from app.services.content_aggregator import get_content_aggregator
+from app.services.aggregation.aggregator import get_content_aggregator
 from app.api.deps import require_aggregation_token
-from app.services.source_registry import SourceDefinition, list_sources, SOURCES_BY_KEY
+from app.services.aggregation.registry import (
+    PluginSource,
+    get_all_plugins,
+    get_plugin,
+)
 
 LAB_FILTER_KEYS = {
     "scrape_anthropic",
@@ -17,37 +21,38 @@ LAB_FILTER_KEYS = {
 }
 
 router = APIRouter()
-aggregator = get_content_aggregator()
 
 
 def _slugify(name: str) -> str:
     return name.lower().replace(" ", "-")
 
-def _serialize_source(definition: SourceDefinition) -> Dict[str, Any]:
-    return {
-        "key": definition.key,
-        "name": definition.name,
-        "channel": definition.channel,
-        "category": definition.category,
-        "contentTypes": definition.content_types,
-        "defaultEnabled": definition.default_enabled,
-    }
 
-def _all_source_configs() -> List[Dict[str, Any]]:
-    return (
-        aggregator.rss_sources
-        + aggregator.youtube_channels
-        + aggregator.web_scraper_sources
-    )
+def _channel_for_key(key: str) -> str:
+    if key.startswith("rss_"):
+        return "rss"
+    if key.startswith("yt_"):
+        return "youtube"
+    return "scraper"
+
+
+def _serialize_plugin(plugin: PluginSource) -> Dict[str, Any]:
+    return {
+        "key": plugin.key,
+        "name": plugin.name,
+        "channel": _channel_for_key(plugin.key),
+        "category": plugin.category,
+        "contentTypes": plugin.content_types,
+        "defaultEnabled": True,
+    }
 
 
 @router.get("")
 def get_content_sources():
     """Return all known aggregation sources."""
-    definitions = list_sources()
+    plugins = get_all_plugins()
     return {
-        "total": len(definitions),
-        "sources": [_serialize_source(defn) for defn in definitions],
+        "total": len(plugins),
+        "sources": [_serialize_plugin(p) for p in plugins],
     }
 
 
@@ -61,18 +66,19 @@ async def get_sources_status():
     """Get status of content aggregation."""
     return {
         "status": "active",
-        "sources": len(_all_source_configs()),
+        "sources": len(get_all_plugins()),
     }
 
 
 @router.get("/types")
 def get_source_types():
     """Return available content types emitted by sources."""
-    definitions = list_sources()
+    plugins = get_all_plugins()
     content_types = sorted(
-        {value for definition in definitions for value in definition.content_types}
+        {ct for plugin in plugins for ct in plugin.content_types}
     )
     return {"types": content_types}
+
 
 @router.post(
     "/refresh/{source_identifier}",
@@ -82,21 +88,21 @@ async def refresh_specific_source(source_identifier: str):
     """Manually refresh a specific source (by key or slug)."""
     identifier = source_identifier.lower()
 
-    def _matches(source: Dict[str, Any]) -> bool:
-        key = source.get("source_key", "").lower()
-        name_slug = _slugify(source.get("name", ""))
-        return identifier in {key, name_slug}
+    plugins = get_all_plugins()
+    matched = next(
+        (p for p in plugins if identifier in {p.key.lower(), _slugify(p.name)}),
+        None,
+    )
 
-    sources = _all_source_configs()
-    source = next((s for s in sources if _matches(s)), None)
-
-    if not source:
+    if not matched:
         raise HTTPException(status_code=404, detail="Source not found.")
 
-    # For now, refresh executes a full aggregation cycle.
-    result = await aggregator.aggregate_all_content()
+    aggregator = get_content_aggregator()
+    result = await aggregator.aggregate_selective(
+        rss=False, youtube=False, all_scrapers=False, scrapers=[matched.name],
+    )
     return {
-        "source": source.get("source_key") or source.get("name"),
+        "source": matched.key,
         "items_fetched": result.get("total_new_items", 0),
         "status": "success",
     }
@@ -108,16 +114,16 @@ def get_lab_filters():
 
     labs: List[Dict[str, Any]] = []
     for key in LAB_FILTER_KEYS:
-        definition = SOURCES_BY_KEY.get(key)
-        if not definition:
+        plugin = get_plugin(key)
+        if not plugin:
             continue
         labs.append(
             {
-                "id": _slugify(definition.name),
-                "label": definition.name,
-                "category": definition.category,
-                "source_type": definition.channel,
-                "sourceKey": definition.key,
+                "id": _slugify(plugin.name),
+                "label": plugin.name,
+                "category": plugin.category,
+                "source_type": _channel_for_key(plugin.key),
+                "sourceKey": plugin.key,
             }
         )
 

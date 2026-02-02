@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Optional
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
 from app.db import models
-from app.services.source_registry import SourceDefinition, SOURCES_BY_KEY, list_sources
+from app.services.aggregation.registry import SourceDefinition, SOURCES_BY_KEY, list_sources
 
 
 class UnknownSourceError(ValueError):
@@ -19,8 +19,38 @@ class PreferenceService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def _get_user_sources(self, user_id: str) -> list[models.AggregationSource]:
+        """Query all custom sources owned by *user_id*."""
+        return (
+            self.db.query(models.AggregationSource)
+            .filter(
+                models.AggregationSource.created_by == user_id,
+                models.AggregationSource.source_type == "user",
+            )
+            .all()
+        )
+
+    def _find_user_source(self, user_id: str, source_key: str) -> Optional[models.AggregationSource]:
+        """Return a single user source by key, or None."""
+        return (
+            self.db.query(models.AggregationSource)
+            .filter(
+                models.AggregationSource.key == source_key,
+                models.AggregationSource.created_by == user_id,
+                models.AggregationSource.source_type == "user",
+            )
+            .first()
+        )
+
     def list_preferences(self, user_id: str) -> Dict[str, bool]:
+        # System source defaults
         defaults = {definition.key: definition.default_enabled for definition in list_sources()}
+
+        # User source defaults (enabled state from AggregationSource)
+        for us in self._get_user_sources(user_id):
+            defaults[us.key] = bool(us.enabled)
+
+        # Override with explicit preference rows
         rows = (
             self.db.query(models.UserSourcePreference)
             .filter(models.UserSourcePreference.user_id == user_id)
@@ -31,7 +61,7 @@ class PreferenceService:
         return defaults
 
     def replace_preferences(self, user_id: str, desired: Dict[str, bool]) -> Dict[str, bool]:
-        self._validate_keys(desired.keys())
+        self._validate_keys(desired.keys(), user_id=user_id)
 
         query = self.db.query(models.UserSourcePreference).filter(models.UserSourcePreference.user_id == user_id)
         if self._supports_for_update():
@@ -65,6 +95,14 @@ class PreferenceService:
                     )
                 )
 
+        # Handle user sources in the desired set
+        for us in self._get_user_sources(user_id):
+            if us.key in desired:
+                us.enabled = desired[us.key]
+                result[us.key] = desired[us.key]
+            else:
+                result[us.key] = bool(us.enabled)
+
         # Remove preferences that refer to unknown sources (defensive cleanup)
         for key, row in existing_rows.items():
             if key not in result:
@@ -73,43 +111,55 @@ class PreferenceService:
         return result
 
     def update_single_preference(self, user_id: str, source_key: str, enabled: bool) -> Dict[str, bool]:
-        if source_key not in SOURCES_BY_KEY:
-            raise UnknownSourceError(f"Unknown source key '{source_key}'")
+        # Check system sources first
+        if source_key in SOURCES_BY_KEY:
+            definition: SourceDefinition = SOURCES_BY_KEY[source_key]
+            target_state = bool(enabled)
 
-        definition: SourceDefinition = SOURCES_BY_KEY[source_key]
-        target_state = bool(enabled)
-
-        existing = (
-            self.db.query(models.UserSourcePreference)
-            .filter(
-                models.UserSourcePreference.user_id == user_id,
-                models.UserSourcePreference.source_key == source_key,
-            )
-            .one_or_none()
-        )
-
-        if target_state == definition.default_enabled:
-            if existing:
-                self.db.delete(existing)
-        else:
-            if existing:
-                existing.enabled = target_state
-                existing.updated_at = datetime.now(timezone.utc)
-                self.db.add(existing)
-            else:
-                self.db.add(
-                    models.UserSourcePreference(
-                        user_id=user_id,
-                        source_key=source_key,
-                        enabled=target_state,
-                    )
+            existing = (
+                self.db.query(models.UserSourcePreference)
+                .filter(
+                    models.UserSourcePreference.user_id == user_id,
+                    models.UserSourcePreference.source_key == source_key,
                 )
+                .one_or_none()
+            )
 
-        return self.list_preferences(user_id)
+            if target_state == definition.default_enabled:
+                if existing:
+                    self.db.delete(existing)
+            else:
+                if existing:
+                    existing.enabled = target_state
+                    existing.updated_at = datetime.now(timezone.utc)
+                    self.db.add(existing)
+                else:
+                    self.db.add(
+                        models.UserSourcePreference(
+                            user_id=user_id,
+                            source_key=source_key,
+                            enabled=target_state,
+                        )
+                    )
 
-    def _validate_keys(self, keys: Iterable[str]) -> None:
+            return self.list_preferences(user_id)
+
+        # Check user sources
+        user_source = self._find_user_source(user_id, source_key)
+        if user_source:
+            user_source.enabled = bool(enabled)
+            self.db.flush()
+            return self.list_preferences(user_id)
+
+        raise UnknownSourceError(f"Unknown source key '{source_key}'")
+
+    def _validate_keys(self, keys: Iterable[str], user_id: Optional[str] = None) -> None:
+        user_keys: set[str] = set()
+        if user_id:
+            user_keys = {us.key for us in self._get_user_sources(user_id)}
+
         for key in keys:
-            if key not in SOURCES_BY_KEY:
+            if key not in SOURCES_BY_KEY and key not in user_keys:
                 raise UnknownSourceError(f"Unknown source key '{key}'")
 
     def _supports_for_update(self) -> bool:

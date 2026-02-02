@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+"""Moonshot AI blog scraper plugin."""
 import re
 import time
 from typing import Any, Dict, List
@@ -10,16 +10,14 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-from ._lab_scraper_utils import (
-    autoscroll_page,
-    create_chrome_driver,
-    make_lab_item,
-    normalize_whitespace,
-    parse_datetime,
-)
+from app.services.aggregation.registry import register
+from app.services.aggregation.utils.date_parser import parse_date
+from app.services.aggregation.utils.html import make_item, normalize_whitespace
+from app.services.aggregation.utils.webdriver import autoscroll_page, create_chrome_driver
 
 BASE = "https://www.moonshot.ai/"
 BG_URL_RE = re.compile(r'background-image\s*:\s*url\((["\']?)(.*?)\1\)', re.I)
+
 
 def absolutize(u: str | None) -> str | None:
     if not u:
@@ -32,15 +30,19 @@ def absolutize(u: str | None) -> str | None:
         return urljoin(BASE, u)
     return u
 
+
 def build_driver(headless: bool = True) -> webdriver.Chrome:
     return create_chrome_driver(headless=headless, window_size="1400,1200")
+
 
 def wait_for_cards(driver, timeout=25):
     sel = "a[class*='k2Item'], a[class*='researchItem']"
     WebDriverWait(driver, timeout).until(EC.presence_of_element_located((By.CSS_SELECTOR, sel)))
 
+
 def autoscroll(driver, pause=0.8, max_tries=15):
     autoscroll_page(driver, pause=pause, max_attempts=max_tries)
+
 
 def get_text_safe(root, css):
     try:
@@ -48,11 +50,13 @@ def get_text_safe(root, css):
     except NoSuchElementException:
         return None
 
+
 def pick_bg_url_from_style(style_val: str | None) -> str | None:
     if not style_val:
         return None
     m = BG_URL_RE.search(style_val)
     return m.group(2) if m else None
+
 
 def extract_items(driver):
     items, seen = [], set()
@@ -115,16 +119,22 @@ def extract_items(driver):
             "date_display": date_display,
             "thumbnail": thumb,
             "url": url,
-            "author": 'Moonshot',
-            "type": "research_lab"
+            "author": "Moonshot",
+            "type": "research_lab",
         })
         seen.add(url)
 
     return items
 
 
+@register(
+    key="scrape_moonshot",
+    name="Moonshot",
+    category="frontier_model",
+    content_types=["research_lab", "article"],
+    requires_selenium=True,
+)
 def scrape(headless: bool = True) -> List[Dict[str, Any]]:
-    """Scrape Moonshot cards and return normalized content items."""
     driver = build_driver(headless=headless)
     try:
         driver.get(BASE)
@@ -144,9 +154,9 @@ def scrape(headless: bool = True) -> List[Dict[str, Any]]:
         url = item.get("url")
         if not title or not url:
             continue
-        published_at = parse_datetime(item.get("date_iso") or item.get("date_display"))
+        published_at = parse_date(item.get("date_iso") or item.get("date_display"))
         normalized.append(
-            make_lab_item(
+            make_item(
                 title=title,
                 url=url,
                 author=item.get("author") or "Moonshot",

@@ -7,7 +7,7 @@ from sqlalchemy import func, asc, desc, or_
 from app.db.base import get_db
 from app.db.models import ContentItem
 from app.core.config import settings
-from app.services.source_registry import SOURCES_BY_KEY
+from app.services.aggregation.registry import SOURCES_BY_KEY
 
 _LEGACY_THUMBNAIL_REMAP = {
     "deepseek-logo.png": "/static/images/deepseek-brand.png",

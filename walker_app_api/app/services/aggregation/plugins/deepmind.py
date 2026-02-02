@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Google DeepMind blog scraper."""
+"""Google DeepMind blog scraper plugin."""
 from typing import Any, Dict, List
 from urllib.parse import urljoin
 
@@ -7,7 +6,9 @@ import requests
 from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
 
-from ._lab_scraper_utils import make_lab_item, normalize_whitespace, parse_datetime
+from app.services.aggregation.registry import register
+from app.services.aggregation.utils.date_parser import parse_date
+from app.services.aggregation.utils.html import make_item, normalize_whitespace
 
 BASE = "https://deepmind.google"
 INDEX_URL = "https://deepmind.google/blog/"
@@ -22,15 +23,13 @@ HEADERS = {
 }
 
 
-def fetch(url: str) -> str:
-    """Fetch a URL with appropriate headers."""
+def _fetch(url: str) -> str:
     r = requests.get(url, headers=HEADERS, timeout=30)
     r.raise_for_status()
     return r.text
 
 
-def parse_date(text: str):
-    """Parse date text into ISO and display format."""
+def _parse_date_text(text: str):
     if not text:
         return None, None
     disp = normalize_whitespace(text)
@@ -43,8 +42,7 @@ def parse_date(text: str):
         return None, disp
 
 
-def absolutize(url: str) -> str:
-    """Convert relative URLs to absolute URLs."""
+def _absolutize(url: str) -> str:
     if not url:
         return url
     if url.startswith("//"):
@@ -54,65 +52,47 @@ def absolutize(url: str) -> str:
     return url if url.startswith(("http://", "https://")) else urljoin(INDEX_URL, url)
 
 
-def extract_articles(html: str):
-    """Extract articles from the DeepMind blog page."""
+def _extract_articles(html: str):
     soup = BeautifulSoup(html, "html.parser")
     articles = []
     seen = set()
 
-    # Find all article cards
     for article in soup.select("article.card.card-blog"):
-        # Extract title
         title_node = article.select_one("h3.card__title")
         title = normalize_whitespace(title_node.get_text(strip=True)) if title_node else None
-        
         if not title:
             continue
 
-        # Extract link
         link_node = article.select_one("a[href]")
         if not link_node:
             continue
-        
-        url = absolutize(link_node.get("href"))
+
+        url = _absolutize(link_node.get("href"))
         if url in seen:
             continue
         seen.add(url)
 
-        # Extract date
         time_node = article.select_one("time[datetime]")
-        date_text = None
         date_iso = None
         date_display = None
-        
+
         if time_node:
             date_text = time_node.get("datetime")
             if not date_text:
                 date_text = time_node.get_text(strip=True)
             if date_text:
-                date_iso, date_display = parse_date(date_text)
+                date_iso, date_display = _parse_date_text(date_text)
 
-        # Extract category
-        category_node = article.select_one("span.meta__category")
-        category = normalize_whitespace(category_node.get_text(strip=True)) if category_node else None
-
-        # Extract thumbnail
         thumbnail = None
         img = article.select_one("img")
         if img:
-            # Try to get the src attribute
             src = img.get("src")
             if src:
-                thumbnail = absolutize(src)
-            # If no src, try srcset
+                thumbnail = _absolutize(src)
             elif img.get("srcset"):
-                srcset = img.get("srcset")
-                # Parse srcset to get the best quality image
-                if srcset:
-                    # srcset format: "url width, url width, ..."
-                    sources = [s.strip().split()[0] for s in srcset.split(",") if s.strip()]
-                    if sources:
-                        thumbnail = absolutize(sources[-1])  # Get the largest image
+                sources = [s.strip().split()[0] for s in img["srcset"].split(",") if s.strip()]
+                if sources:
+                    thumbnail = _absolutize(sources[-1])
 
         articles.append({
             "title": title,
@@ -120,53 +100,43 @@ def extract_articles(html: str):
             "date_iso": date_iso,
             "date_display": date_display,
             "thumbnail": thumbnail,
-            "category": category,
-            "author": "Google DeepMind",
-            "type": "research_lab",
         })
 
     return articles
 
 
+@register(
+    key="scrape_google_deepmind",
+    name="Google DeepMind",
+    category="frontier_model",
+    content_types=["research_lab", "article"],
+)
 def scrape() -> List[Dict[str, Any]]:
-    """Scrape the Google DeepMind blog and return normalized content items."""
-    index_html = fetch(INDEX_URL)
-    raw_items = extract_articles(index_html)
+    index_html = _fetch(INDEX_URL)
+    raw_items = _extract_articles(index_html)
     normalized: List[Dict[str, Any]] = []
-    
+
     for item in raw_items:
         url = item.get("url")
         title = item.get("title")
         if not url or not title:
             continue
 
-        published_at = parse_datetime(item.get("date_iso") or item.get("date_display"))
-        
-        # Build metadata
-        meta_data = {
-            "extraction_method": "requests",
-        }
-        if item.get("category"):
-            meta_data["category"] = item["category"]
-        if item.get("date_iso"):
-            meta_data["date_iso"] = item["date_iso"]
-        if item.get("date_display"):
-            meta_data["date_display"] = item["date_display"]
+        published_at = parse_date(item.get("date_iso") or item.get("date_display"))
 
         normalized.append(
-            make_lab_item(
+            make_item(
                 title=title,
                 url=url,
-                author=item.get("author") or "Google DeepMind",
+                author="Google DeepMind",
                 published_at=published_at,
                 thumbnail_url=item.get("thumbnail"),
-                item_type=item.get("type"),
+                item_type="research_lab",
                 source_name="Google DeepMind",
                 extraction_method="requests",
                 date_iso=item.get("date_iso"),
                 date_display=item.get("date_display"),
             )
         )
-    
-    return normalized
 
+    return normalized

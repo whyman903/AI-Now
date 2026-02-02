@@ -14,14 +14,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.db.base import create_tables, SessionLocal, ensure_content_items_compat_schema
 from app.db.models import ContentItem
-from app.services.content_aggregator import get_content_aggregator
+from app.services.aggregation.aggregator import get_content_aggregator
 
 SCRAPER_MAP = {
     'anthropic': 'Anthropic', 'deepseek': 'DeepSeek', 'xai': 'xAI', 'qwen': 'Qwen',
     'moonshot': 'Moonshot', 'openai': 'OpenAI', 'perplexity': 'Perplexity',
     'thinking_machines': 'Thinking Machines', 'huggingface': 'Hugging Face Papers',
     'tavily_trending': 'Tavily AI Trends', 'nvidia_podcast': 'NVIDIA AI Podcast',
-    'dwarkesh_podcast': 'Dwarkesh Podcast',
+    'dwarkesh_podcast': 'Dwarkesh Podcast', 'google_deepmind': 'Google DeepMind',
 }
 
 async def main():
@@ -70,9 +70,7 @@ async def main():
     client = httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={'User-Agent': 'AI-Now/1.0'})
     aggregator = get_content_aggregator()
     aggregator.configure(low_memory=args.low_memory)
-    print(
-        f"Batches -> web={aggregator.web_scraper_batch_size}, youtube={aggregator.youtube_batch_size}, rss={aggregator.rss_batch_size}"
-    )
+    print(f"Batch size -> {aggregator.plugin_batch_size}")
     aggregator.set_http_client(client)
 
     try:
@@ -90,7 +88,8 @@ async def main():
         try:
             total = db.query(ContentItem).count()
             with_thumbs = db.query(ContentItem).filter(ContentItem.thumbnail_url.isnot(None)).count()
-            print(f"\nDB: {total} items, {with_thumbs} with thumbnails ({with_thumbs/total*100:.1f}%)")
+            pct = (with_thumbs / total * 100) if total else 0
+            print(f"\nDB: {total} items, {with_thumbs} with thumbnails ({pct:.1f}%)")
         finally:
             db.close()
     except Exception as e:
@@ -100,6 +99,9 @@ async def main():
     finally:
         _print_memory("shutdown")
         await client.aclose()
+        # Prevent GC from trying to close the already-closed client after the
+        # event loop shuts down (causes RuntimeError on Python 3.11+).
+        aggregator.client = None
 
 if __name__ == "__main__":
     asyncio.run(main())

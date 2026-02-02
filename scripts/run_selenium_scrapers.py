@@ -15,29 +15,13 @@ import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "walker_app_api"))
 
-from app.services.aggregation_sources import (  # noqa: E402
-    anthropic_agg,
-    dwarkesh_podcast_agg,
-    moonshot_agg,
-    nvidia_podcast_agg,
-    openai_agg,
-    perplexity_agg,
-    xai_agg,
-)
+# Import plugins to trigger registration
+import app.services.aggregation.plugins  # noqa: F401, E402
+from app.services.aggregation.registry import get_selenium_plugins  # noqa: E402
 
 BACKEND_URL = os.environ["BACKEND_URL"]
 TOKEN = os.environ["AGGREGATION_SERVICE_TOKEN"]
 INGEST_URL = f"{BACKEND_URL}/api/v1/aggregation/ingest"
-
-SCRAPERS = [
-    ("scrape_anthropic", anthropic_agg.scrape),
-    ("scrape_openai", openai_agg.scrape),
-    ("scrape_xai", xai_agg.scrape),
-    ("scrape_perplexity", perplexity_agg.scrape),
-    ("scrape_moonshot", moonshot_agg.scrape),
-    ("scrape_nvidia_podcast", nvidia_podcast_agg.scrape),
-    ("scrape_dwarkesh_podcast", dwarkesh_podcast_agg.scrape),
-]
 
 
 class _DateTimeEncoder(json.JSONEncoder):
@@ -70,10 +54,14 @@ def main():
     results = {}
     failures = []
 
-    for source_key, scrape_func in SCRAPERS:
+    selenium_plugins = get_selenium_plugins()
+    print(f"Found {len(selenium_plugins)} Selenium plugins to run")
+
+    for plugin in selenium_plugins:
+        source_key = plugin.key
         print(f"[{source_key}] Scraping...")
         try:
-            items = scrape_func()
+            items = plugin.scrape_func()
             print(f"[{source_key}] Got {len(items)} items")
         except Exception as exc:
             print(f"[{source_key}] Scrape failed: {exc}")

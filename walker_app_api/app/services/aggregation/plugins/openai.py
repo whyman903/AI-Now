@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+"""OpenAI blog scraper plugin."""
 from typing import Any, Dict, List
 from urllib.parse import urljoin
 
@@ -10,19 +10,18 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from ._lab_scraper_utils import (
-    autoscroll_page,
-    create_chrome_driver,
-    make_lab_item,
-    normalize_whitespace,
-    parse_datetime,
-)
+from app.services.aggregation.registry import register
+from app.services.aggregation.utils.date_parser import parse_date
+from app.services.aggregation.utils.html import make_item, normalize_whitespace
+from app.services.aggregation.utils.webdriver import autoscroll_page, create_chrome_driver
 
 BASE = "https://openai.com"
 START_URL = "https://openai.com/research/index/?display=grid"
 
+
 def build_driver(headless: bool = True) -> webdriver.Chrome:
     return create_chrome_driver(headless=headless, window_size="1400,1000")
+
 
 def wait_for_grid(driver, timeout=20):
     sel = "a[aria-label][href^='/index/']"
@@ -30,11 +29,8 @@ def wait_for_grid(driver, timeout=20):
         EC.presence_of_element_located((By.CSS_SELECTOR, sel))
     )
 
+
 def autoscroll_to_bottom(driver, pause=0.8, max_tries=20):
-    """
-    Scrolls to bottom, waiting for lazy-loaded content.
-    Stops when page height no longer increases or max_tries reached.
-    """
     autoscroll_page(driver, pause=pause, max_attempts=max_tries)
 
 
@@ -93,8 +89,8 @@ def extract_from_html(html: str):
                 "date_display": date_display,
                 "thumbnail": thumb,
                 "url": url,
-                "author": 'OpenAI',
-                "type": "research_lab"
+                "author": "OpenAI",
+                "type": "research_lab",
             })
         except Exception:
             continue
@@ -108,8 +104,14 @@ def extract_from_html(html: str):
     return deduped
 
 
+@register(
+    key="scrape_openai",
+    name="OpenAI",
+    category="frontier_model",
+    content_types=["research_lab", "article"],
+    requires_selenium=True,
+)
 def scrape(headless: bool = True) -> List[Dict[str, Any]]:
-    """Scrape OpenAI Research grid and return normalized items."""
     driver = build_driver(headless=headless)
     try:
         driver.get(START_URL)
@@ -129,9 +131,9 @@ def scrape(headless: bool = True) -> List[Dict[str, Any]]:
         url = item.get("url")
         if not title or not url:
             continue
-        published_at = parse_datetime(item.get("date_iso") or item.get("date_display"))
+        published_at = parse_date(item.get("date_iso") or item.get("date_display"))
         normalized.append(
-            make_lab_item(
+            make_item(
                 title=title,
                 url=url,
                 author=item.get("author") or "OpenAI",

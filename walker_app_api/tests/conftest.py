@@ -57,7 +57,8 @@ sa.create_engine = _safe_create_engine
 
 from app.db import base, models  # noqa: E402
 from app.services import analytics_queue as analytics_queue_module  # noqa: E402
-from app.services import content_aggregator as content_aggregator_module  # noqa: E402
+from app.services.aggregation import aggregator as new_aggregator_module  # noqa: E402
+from app.services.aggregation.plugins import rss as rss_plugin_module  # noqa: E402
 
 
 def _sqlite_engine(db_file: Path) -> sa.Engine:
@@ -94,9 +95,10 @@ def sessionmaker_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Gen
 
     monkeypatch.setattr(base, "engine", engine)
     monkeypatch.setattr(base, "SessionLocal", TestingSessionLocal)
-    monkeypatch.setattr(content_aggregator_module, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(new_aggregator_module, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(rss_plugin_module, "SessionLocal", TestingSessionLocal)
     monkeypatch.setattr(analytics_queue_module, "SessionLocal", TestingSessionLocal)
-    content_aggregator_module._aggregator = None
+    new_aggregator_module._aggregator = None
     from app.crud import analytics as analytics_crud
     monkeypatch.setattr(
         analytics_crud,

@@ -1,22 +1,21 @@
-#!/usr/bin/env python3
+"""DeepSeek news scraper plugin."""
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from urllib.parse import urljoin
+from xml.etree import ElementTree as ET
 
 import httpx
 from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
-from xml.etree import ElementTree as ET
-from ._lab_scraper_utils import (
-    ensure_naive_utc,
-    make_lab_item,
-    normalize_whitespace,
-)
+
+from app.services.aggregation.registry import register
+from app.services.aggregation.utils.date_parser import ensure_naive_utc
+from app.services.aggregation.utils.html import make_item, normalize_whitespace
+
 BASE_URL = "https://www.deepseek.com"
-PAGE_URL = "https://www.deepseek.com/en"
 THUMBNAIL_URL = "/static/images/deepseek-brand.png"
 GITHUB_PREFIX = "https://github.com/deepseek-ai/"
 
@@ -28,16 +27,6 @@ HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Referer": "https://www.deepseek.com/",
-    "Sec-Ch-Ua": '"Not/A)Brand";v="99", "Google Chrome";v="126", "Chromium";v="126"',
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": '"macOS"',
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-User": "?1",
 }
 
 GITHUB_PAGE_HEADERS: Dict[str, str] = {
@@ -51,42 +40,6 @@ GITHUB_PAGE_HEADERS: Dict[str, str] = {
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 
 logger = logging.getLogger(__name__)
-
-
-def _absolutize(url: str) -> str:
-    if url.startswith("//"):
-        return "https:" + url
-    if url.startswith("/"):
-        return urljoin(BASE_URL, url)
-    if url.startswith("http://") or url.startswith("https://"):
-        return url
-    return urljoin(PAGE_URL, url)
-
-
-def _extract_research_links(html: str) -> List[Dict[str, str]]:
-    soup = BeautifulSoup(html, "html.parser")
-
-    results: List[Dict[str, str]] = []
-    seen: set[str] = set()
-
-    for anchor in soup.find_all("a", href=True):
-        href = anchor.get("href", "").strip()
-        if not href:
-            continue
-        url = _absolutize(href)
-        if not url.lower().startswith(GITHUB_PREFIX.lower()):
-            continue
-        if url in seen:
-            continue
-
-        title = normalize_whitespace(anchor.get_text(strip=True))
-        if not title:
-            continue
-
-        results.append({"title": title, "url": url})
-        seen.add(url)
-
-    return results
 
 
 def _format_relative(dt: datetime) -> str:
@@ -117,7 +70,7 @@ def _format_relative(dt: datetime) -> str:
 def _extract_repo_identifiers(url: str) -> tuple[str | None, str | None]:
     if not url.startswith("https://github.com/"):
         return None, None
-    path = url[len("https://github.com/") :]
+    path = url[len("https://github.com/"):]
     parts = [part for part in path.split("/") if part]
     if len(parts) < 2:
         return None, None
@@ -138,20 +91,14 @@ def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) ->
         http_client = httpx.Client(headers=GITHUB_PAGE_HEADERS, timeout=10.0, follow_redirects=True)
         close_client = True
 
-    try:
-        feed_url = f"https://github.com/{owner}/{repo}/commits.atom?path=README.md"
-        response = http_client.get(feed_url, timeout=15.0)
-        response.raise_for_status()
-    except httpx.HTTPError as exc:  # pragma: no cover - network dependent
-        logger.debug("DeepSeek scraper: failed fetching README feed for %s: %s", repo_url, exc)
-        if close_client:
-            http_client.close()
-        return None, {}
-
     published_at: datetime | None = None
     meta: Dict[str, Any] = {}
 
     try:
+        feed_url = f"https://github.com/{owner}/{repo}/commits.atom?path=README.md"
+        response = http_client.get(feed_url, timeout=15.0)
+        response.raise_for_status()
+
         root = ET.fromstring(response.text)
         entry = root.find(f"{ATOM_NS}entry")
         if entry is not None:
@@ -165,10 +112,9 @@ def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) ->
             link = entry.find(f"{ATOM_NS}link[@rel='alternate']")
             if link is not None and link.get("href"):
                 meta["readme_commit_url"] = link.get("href")
-    except ET.ParseError as exc:  # pragma: no cover - defensive parsing guard
-        logger.debug("DeepSeek scraper: failed parsing README feed for %s: %s", repo_url, exc)
+    except (httpx.HTTPError, ET.ParseError) as exc:
+        logger.debug("DeepSeek scraper: failed fetching README feed for %s: %s", repo_url, exc)
 
-    # Fallback to general repo commit feed if README-specific feed is empty
     if not published_at:
         try:
             feed_url = f"https://github.com/{owner}/{repo}/commits.atom"
@@ -187,7 +133,7 @@ def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) ->
                 link = entry.find(f"{ATOM_NS}link[@rel='alternate']")
                 if link is not None and link.get("href"):
                     meta.setdefault("readme_commit_url", link.get("href"))
-        except (httpx.HTTPError, ET.ParseError) as exc:  # pragma: no cover - defensive parsing guard
+        except (httpx.HTTPError, ET.ParseError) as exc:
             logger.debug("DeepSeek scraper: failed fallback commit feed for %s: %s", repo_url, exc)
 
     if close_client:
@@ -197,10 +143,8 @@ def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) ->
 
 
 def _fetch_repos_from_github_api() -> List[Dict[str, str]]:
-    """Fetch DeepSeek repos directly from GitHub API instead of scraping their website."""
     try:
         with httpx.Client(timeout=15.0, follow_redirects=True) as client:
-            # Get repositories sorted by most recently updated
             response = client.get(
                 "https://api.github.com/users/deepseek-ai/repos",
                 params={"sort": "updated", "per_page": 15},
@@ -208,34 +152,37 @@ def _fetch_repos_from_github_api() -> List[Dict[str, str]]:
             )
             response.raise_for_status()
             repos = response.json()
-            
+
             results = []
             for repo in repos:
-                # Filter for main model repos (not forks, archives, or utility repos)
                 if repo.get("fork") or repo.get("archived"):
                     continue
-                    
+
                 name = repo.get("name", "")
-                # Focus on main DeepSeek model repos
                 if not any(keyword in name.lower() for keyword in ["deepseek", "model", "coder", "3fs"]):
                     continue
-                
+
                 results.append({
                     "title": name.replace("-", " "),
                     "url": repo["html_url"],
                     "description": repo.get("description", ""),
                 })
-            
+
             return results
     except Exception as exc:
-        logger.error(f"Failed to fetch DeepSeek repos from GitHub API: {exc}")
+        logger.error("Failed to fetch DeepSeek repos from GitHub API: %s", exc)
         return []
 
 
+@register(
+    key="scrape_deepseek",
+    name="DeepSeek",
+    category="frontier_model",
+    content_types=["article"],
+)
 def scrape() -> List[Dict[str, Any]]:
-    """Scrape DeepSeek content using GitHub API (website blocks Selenium)."""
     items = _fetch_repos_from_github_api()
-    
+
     if not items:
         logger.warning("DeepSeek scraper: No items found from GitHub API")
         return []
@@ -257,7 +204,7 @@ def scrape() -> List[Dict[str, Any]]:
             )
 
             normalized.append(
-                make_lab_item(
+                make_item(
                     title=item["title"],
                     url=item["url"],
                     author="DeepSeek",

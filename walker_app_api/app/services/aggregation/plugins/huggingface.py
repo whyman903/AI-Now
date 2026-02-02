@@ -1,14 +1,15 @@
-#!/usr/bin/env python3
+"""Hugging Face daily papers scraper plugin."""
 import re
 import zlib
-from typing import List, Optional, Dict, Any
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
-from datetime import datetime, timezone
 from dateutil import parser as dateparser
 
+from app.services.aggregation.registry import register
 
 BASE = "https://huggingface.co"
 TRENDING = f"{BASE}/papers/trending"
@@ -31,10 +32,6 @@ HEADERS = {
 
 
 def _normalize_arxiv_to_pdf(url: str) -> str:
-    """
-    Ensure arXiv links are in the canonical PDF form: https://arxiv.org/pdf/{id}.pdf
-    Accepts /abs/{id} or /pdf/{id}[.pdf]
-    """
     m = ARXIV_PDF_RE.search(url)
     if not m:
         return url
@@ -87,12 +84,10 @@ def _resolve_pdf_for_paper_sync(paper_url: str) -> Optional[str]:
     html = _fetch_text_sync(paper_url)
     if not html:
         return None
-    pdf_url = _find_pdf_link_from_html(html)
-    return pdf_url
+    return _find_pdf_link_from_html(html)
 
 
 def _clean_extracted_url(url: str) -> str:
-    """Trim common trailing punctuation from URLs extracted out of text blobs."""
     return url.rstrip(")]>.,;'\"")
 
 
@@ -109,7 +104,6 @@ def _extract_github_from_bytes(blob: bytes) -> Optional[str]:
 
 
 def _iter_pdf_streams(pdf_bytes: bytes, max_stream_bytes: int = 1_500_000):
-    """Yield raw stream sections from a PDF binary payload."""
     stream_marker = b"stream"
     end_marker = b"endstream"
     start_idx = 0
@@ -118,7 +112,6 @@ def _iter_pdf_streams(pdf_bytes: bytes, max_stream_bytes: int = 1_500_000):
         if stream_pos == -1:
             break
         data_start = stream_pos + len(stream_marker)
-        # Skip leading newlines after the stream marker
         while data_start < len(pdf_bytes) and pdf_bytes[data_start:data_start + 1] in (b"\r", b"\n"):
             data_start += 1
         end_pos = pdf_bytes.find(end_marker, data_start)
@@ -136,7 +129,6 @@ def _iter_pdf_streams(pdf_bytes: bytes, max_stream_bytes: int = 1_500_000):
 
 
 def _safe_decompress(stream: bytes, max_output: int = 2_000_000) -> Optional[bytes]:
-    """Attempt to inflate a raw PDF stream, capping the amount of output we keep."""
     if not stream or len(stream) > max_output * 4:
         return None
 
@@ -191,8 +183,13 @@ def _extract_github_url_from_pdf(pdf_url: str) -> Optional[str]:
     return None
 
 
-def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
-    """Scrape trending Hugging Face papers and return normalized content items."""
+@register(
+    key="scrape_hugging_face_papers",
+    name="Hugging Face Papers",
+    category="options",
+    content_types=["research_paper"],
+)
+def scrape(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
     html = httpx.get(TRENDING, headers=HEADERS, timeout=30.0).text
     soup = BeautifulSoup(html, "html.parser")
 
@@ -249,7 +246,7 @@ def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
                 authors_text = span_texts[0]
             for candidate in span_texts[1:]:
                 stripped = candidate.strip()
-                if not stripped or stripped == "·":
+                if not stripped or stripped == "\u00b7":
                     continue
                 if "published" in stripped.lower() or stripped:
                     published_text = candidate
@@ -289,16 +286,14 @@ def scrape_trending_papers(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
         if published_text:
             meta["date_display"] = published_text
 
-        results.append(
-            {
-                "type": "research_paper",
-                "title": title,
-                "url": final_url,
-                "author": authors_text or None,
-                "published_at": published_at,
-                "thumbnail_url": thumbnail,
-                "meta_data": meta,
-            }
-        )
+        results.append({
+            "type": "research_paper",
+            "title": title,
+            "url": final_url,
+            "author": authors_text or None,
+            "published_at": published_at,
+            "thumbnail_url": thumbnail,
+            "meta_data": meta,
+        })
 
     return results

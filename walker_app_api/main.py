@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
     
     # Inject HTTP client into aggregator
     try:
-        from app.services.content_aggregator import get_content_aggregator
+        from app.services.aggregation.aggregator import get_content_aggregator
         get_content_aggregator().set_http_client(app.state.http_client)
     except Exception as e:
         logger.warning(f"Unable to inject HTTP client into aggregator: {e}")
@@ -127,6 +127,7 @@ async def lifespan(app: FastAPI):
     if client:
         try:
             await client.aclose()
+            get_content_aggregator().client = None
             logger.info("HTTP client closed")
         except Exception as e:
             logger.error(f"Error closing HTTP client: {e}")

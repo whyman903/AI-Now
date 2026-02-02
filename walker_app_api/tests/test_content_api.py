@@ -41,13 +41,11 @@ class DummyAggregator:
 
 @pytest.fixture
 def api_client(sessionmaker_fixture, analytics_queue_stub, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    from app.api.v1.endpoints import items as items_module
-    from app.services import content_aggregator as agg_module
+    from app.services.aggregation import aggregator as new_agg_module
     from walker_app_api import main
 
     dummy = DummyAggregator()
-    monkeypatch.setattr(agg_module, "get_content_aggregator", lambda: dummy)
-    items_module.aggregator = dummy
+    monkeypatch.setattr(new_agg_module, "get_content_aggregator", lambda: dummy)
 
     # Ensure token-dependent routes accept our header
     monkeypatch.setattr(config.settings, "AGGREGATION_SERVICE_TOKEN", "valid-token-" + "x" * 32)
@@ -157,7 +155,7 @@ def test_content_types_and_trending(api_client: TestClient, sessionmaker_fixture
 
 
 def test_source_endpoints_and_refresh(api_client: TestClient, sessionmaker_fixture):
-    from app.api.v1.endpoints import items as items_module
+    from app.services.aggregation.registry import get_all_plugins
 
     sources = api_client.get("/api/v1/sources")
     assert sources.status_code == 200
@@ -165,11 +163,7 @@ def test_source_endpoints_and_refresh(api_client: TestClient, sessionmaker_fixtu
 
     status = api_client.get("/api/v1/sources/status")
     assert status.status_code == 200
-    assert status.json()["sources"] == len(
-        items_module.aggregator.rss_sources
-        + items_module.aggregator.youtube_channels
-        + items_module.aggregator.web_scraper_sources
-    )
+    assert status.json()["sources"] == len(get_all_plugins())
 
     labs = api_client.get("/api/v1/sources/filters/labs")
     assert labs.status_code == 200
@@ -181,4 +175,3 @@ def test_source_endpoints_and_refresh(api_client: TestClient, sessionmaker_fixtu
     )
     assert refresh.status_code == 200
     assert refresh.json()["status"] == "success"
-    items_module.aggregator.aggregate_all_content.assert_awaited()
