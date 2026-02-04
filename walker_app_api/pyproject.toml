@@ -26,8 +26,8 @@ dependencies = [
     "openai>=1.40.0,<2",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=1.3.0",
 ]

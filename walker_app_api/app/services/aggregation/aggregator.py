@@ -104,7 +104,7 @@ class ContentAggregator:
                     settings.CHROME_BINARY_PATH = path
                 return True
 
-        logger.warning(
+        logger.debug(
             "Chrome/Chromium binary not found; Selenium-based scrapers will be skipped."
         )
         return False
