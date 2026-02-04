@@ -12,8 +12,8 @@ services:
     name: walker-app-api
     env: python
     plan: starter
-    buildCommand: "curl -LsSf https://astral.sh/uv/install.sh | sh && $HOME/.local/bin/uv sync --locked --no-dev"
-    startCommand: "$HOME/.local/bin/uv run alembic upgrade head && $HOME/.local/bin/uv run gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
+    buildCommand: "pip install uv && uv sync --locked --no-dev"
+    startCommand: "uv run alembic upgrade head && uv run gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
