@@ -51,7 +51,8 @@ main_folder/
     │   ├── db/               # Database models
     │   └── core/             # Configuration
     ├── alembic/              # Database migrations
-    └── requirements.txt
+    ├── pyproject.toml
+    └── uv.lock
 ```
 
 ---

@@ -17,19 +17,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: pip
-          cache-dependency-path: walker_app_api/requirements.txt
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
 
       - name: Install dependencies
-        run: pip install -r walker_app_api/requirements.txt
+        working-directory: walker_app_api
+        run: uv sync --locked --no-dev
 
       - name: Run Selenium scrapers and ingest
+        working-directory: walker_app_api
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           AGGREGATION_SERVICE_TOKEN: ${{ secrets.AGGREGATION_SERVICE_TOKEN }}
-          PYTHONPATH: walker_app_api
           DATABASE_URL: "sqlite:///:memory:"
-        run: python scripts/run_selenium_scrapers.py
+        run: uv run python ../scripts/run_selenium_scrapers.py
 
   trigger-api-aggregation:
     runs-on: ubuntu-latest
