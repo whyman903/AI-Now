@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
+from urllib.parse import urlparse
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
@@ -79,6 +80,24 @@ def require_aggregation_token(request: Request) -> None:
         )
 
 
+def require_analytics_origin(request: Request) -> None:
+    """Reject analytics requests that don't originate from an allowed frontend origin."""
+    allowed = set(settings.cors_origins_list)
+
+    origin = request.headers.get("origin")
+    if origin and origin in allowed:
+        return
+
+    referer = request.headers.get("referer")
+    if referer:
+        parsed = urlparse(referer)
+        referer_origin = f"{parsed.scheme}://{parsed.netloc}"
+        if referer_origin in allowed:
+            return
+
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def _resolve_user(
     credentials: Optional[HTTPAuthorizationCredentials],
     db: Session,
@@ -137,6 +156,7 @@ def get_optional_user(
 __all__ = [
     "AGGREGATION_TOKEN_HEADER",
     "require_aggregation_token",
+    "require_analytics_origin",
     "get_current_user",
     "get_optional_user",
 ]

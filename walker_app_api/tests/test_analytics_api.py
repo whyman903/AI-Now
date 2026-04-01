@@ -49,11 +49,14 @@ def api_client(sessionmaker_fixture, analytics_queue_stub, monkeypatch: pytest.M
     return TestClient(main.app)
 
 
+VALID_ORIGIN_HEADERS = {"origin": "https://ai-now.vercel.app"}
+
+
 def test_track_events_through_queue(api_client: TestClient, analytics_queue_stub):
     interaction = api_client.post(
         "/api/v1/analytics/track/interaction",
         json={"content_id": "abc", "interaction_type": "click", "session_id": "s1"},
-        headers={"referer": "https://example.com", "user-agent": "pytest"},
+        headers={**VALID_ORIGIN_HEADERS, "user-agent": "pytest"},
     )
     assert interaction.status_code == 200
     assert len(analytics_queue_stub["interactions"]) == 1
@@ -62,10 +65,11 @@ def test_track_events_through_queue(api_client: TestClient, analytics_queue_stub
         "/api/v1/analytics/track/interactions/batch",
         json={
             "interactions": [
-                {"content_id": "abc", "interaction_type": "view"},
-                {"content_id": "def", "interaction_type": "click"},
+                {"content_id": "abc", "interaction_type": "view", "session_id": "s1"},
+                {"content_id": "def", "interaction_type": "click", "session_id": "s1"},
             ]
         },
+        headers=VALID_ORIGIN_HEADERS,
     )
     assert batch.status_code == 200
     assert batch.json()["count"] == 2
@@ -74,13 +78,15 @@ def test_track_events_through_queue(api_client: TestClient, analytics_queue_stub
     search = api_client.post(
         "/api/v1/analytics/track/search",
         json={"query": "ai", "results_count": 10, "session_id": "s1"},
+        headers=VALID_ORIGIN_HEADERS,
     )
     assert search.status_code == 200
     assert len(analytics_queue_stub["searches"]) == 1
 
     search_batch = api_client.post(
         "/api/v1/analytics/track/searches/batch",
-        json={"searches": [{"query": "llms"}, {"query": "agents", "session_id": "s2"}]},
+        json={"searches": [{"query": "llms", "session_id": "s1"}, {"query": "agents", "session_id": "s2"}]},
+        headers=VALID_ORIGIN_HEADERS,
     )
     assert search_batch.status_code == 200
     assert search_batch.json()["count"] == 2
@@ -89,6 +95,7 @@ def test_track_events_through_queue(api_client: TestClient, analytics_queue_stub
     click = api_client.post(
         "/api/v1/analytics/track/search-click",
         json={"search_id": "search-1", "clicked_result_id": "res-1", "clicked_position": 1},
+        headers=VALID_ORIGIN_HEADERS,
     )
     assert click.status_code == 200
 
@@ -100,10 +107,83 @@ def test_track_events_through_queue(api_client: TestClient, analytics_queue_stub
                 {"search_id": "search-2", "clicked_result_id": "r2", "clicked_position": 2},
             ]
         },
+        headers=VALID_ORIGIN_HEADERS,
     )
     assert click_batch.status_code == 200
     assert click_batch.json()["updated_count"] == 2
     assert len(analytics_queue_stub["clicks"]) == 3
+
+
+def test_analytics_blocked_without_valid_origin(api_client: TestClient, analytics_queue_stub):
+    """Requests without a valid Origin/Referer are rejected with 403."""
+    # No origin at all
+    resp = api_client.post(
+        "/api/v1/analytics/track/interaction",
+        json={"content_id": "abc", "interaction_type": "click", "session_id": "s1"},
+    )
+    assert resp.status_code == 403
+
+    # Wrong origin
+    resp = api_client.post(
+        "/api/v1/analytics/track/interaction",
+        json={"content_id": "abc", "interaction_type": "click", "session_id": "s1"},
+        headers={"origin": "https://evil.com"},
+    )
+    assert resp.status_code == 403
+
+    # Wrong referer
+    resp = api_client.post(
+        "/api/v1/analytics/session",
+        json={"session_id": "s1"},
+        headers={"referer": "https://evil.com/page"},
+    )
+    assert resp.status_code == 403
+
+    # Valid referer works
+    resp = api_client.post(
+        "/api/v1/analytics/session",
+        json={"session_id": "s1"},
+        headers={"referer": "https://ai-now.vercel.app/dashboard"},
+    )
+    assert resp.status_code == 200
+
+    # Localhost origin works (dev)
+    resp = api_client.post(
+        "/api/v1/analytics/track/interaction",
+        json={"content_id": "abc", "interaction_type": "click", "session_id": "s1"},
+        headers={"origin": "http://localhost:5173"},
+    )
+    assert resp.status_code == 200
+
+    # Nothing was enqueued from the rejected requests
+    assert len(analytics_queue_stub["interactions"]) == 1
+
+
+def test_session_id_required_on_tracking(api_client: TestClient, analytics_queue_stub):
+    """session_id is now required on interaction and search payloads."""
+    # Missing session_id on interaction
+    resp = api_client.post(
+        "/api/v1/analytics/track/interaction",
+        json={"content_id": "abc", "interaction_type": "click"},
+        headers=VALID_ORIGIN_HEADERS,
+    )
+    assert resp.status_code == 422
+
+    # Missing session_id on search
+    resp = api_client.post(
+        "/api/v1/analytics/track/search",
+        json={"query": "test"},
+        headers=VALID_ORIGIN_HEADERS,
+    )
+    assert resp.status_code == 422
+
+    # Missing session_id in batch item
+    resp = api_client.post(
+        "/api/v1/analytics/track/interactions/batch",
+        json={"interactions": [{"content_id": "abc", "interaction_type": "click"}]},
+        headers=VALID_ORIGIN_HEADERS,
+    )
+    assert resp.status_code == 422
 
 
 def test_analytics_reporting_endpoints(api_client: TestClient, sessionmaker_fixture):

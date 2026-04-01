@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_analytics_origin
 from app.crud.analytics import AnalyticsCRUD
 from app.db.base import get_db
 from app.services.analytics_queue import AnalyticsQueueFullError, analytics_queue
@@ -27,7 +28,7 @@ class SessionPayload(BaseModel):
 class InteractionPayload(BaseModel):
     content_id: str = Field(..., description="Content item identifier")
     interaction_type: str = Field(..., description="E.g. click, view, share")
-    session_id: Optional[str] = Field(None, description="Associated session id")
+    session_id: str = Field(..., description="Associated session id")
     user_id: Optional[str] = Field(None, description="Optional user id")
     source_page: Optional[str] = Field(None, description="Page where interaction happened")
     position: Optional[int] = Field(None, description="Position of the content in UI")
@@ -37,7 +38,7 @@ class InteractionPayload(BaseModel):
 class SearchPayload(BaseModel):
     query: str
     results_count: Optional[int] = None
-    session_id: Optional[str] = None
+    session_id: str = Field(..., description="Associated session id")
     user_id: Optional[str] = None
     filters: Optional[Dict[str, Any]] = None
 
@@ -75,7 +76,7 @@ class SearchClickBatchPayload(BaseModel):
     )
 
 
-@router.post("/session", tags=["analytics"])
+@router.post("/session", tags=["analytics"], dependencies=[Depends(require_analytics_origin)])
 async def create_or_update_session(
     payload: SessionPayload,
     request: Request,
@@ -104,7 +105,7 @@ async def create_or_update_session(
         raise HTTPException(status_code=500, detail="Unable to persist session.") from exc
 
 
-@router.post("/track/interaction", tags=["analytics"])
+@router.post("/track/interaction", tags=["analytics"], dependencies=[Depends(require_analytics_origin)])
 async def track_interaction(
     payload: InteractionPayload,
     request: Request,
@@ -141,7 +142,7 @@ async def track_interaction(
         raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
 
 
-@router.post("/track/interactions/batch", tags=["analytics"])
+@router.post("/track/interactions/batch", tags=["analytics"], dependencies=[Depends(require_analytics_origin)])
 async def track_interactions_batch(
     payload: InteractionBatchPayload,
     request: Request,
@@ -173,7 +174,7 @@ async def track_interactions_batch(
         raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
 
 
-@router.post("/track/search", tags=["analytics"])
+@router.post("/track/search", tags=["analytics"], dependencies=[Depends(require_analytics_origin)])
 async def track_search(
     payload: SearchPayload,
     request: Request,
@@ -196,7 +197,7 @@ async def track_search(
         raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
 
 
-@router.post("/track/searches/batch", tags=["analytics"])
+@router.post("/track/searches/batch", tags=["analytics"], dependencies=[Depends(require_analytics_origin)])
 async def track_searches_batch(
     payload: SearchBatchPayload,
     request: Request,
@@ -221,7 +222,7 @@ async def track_searches_batch(
         raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
 
 
-@router.post("/track/search-click", tags=["analytics"])
+@router.post("/track/search-click", tags=["analytics"], dependencies=[Depends(require_analytics_origin)])
 async def track_search_click(
     payload: SearchClickPayload,
 ) -> Dict[str, Any]:
@@ -237,7 +238,7 @@ async def track_search_click(
         raise HTTPException(status_code=503, detail="Analytics queue is busy. Try again later.") from exc
 
 
-@router.post("/track/search-click/batch", tags=["analytics"])
+@router.post("/track/search-click/batch", tags=["analytics"], dependencies=[Depends(require_analytics_origin)])
 async def track_search_click_batch(
     payload: SearchClickBatchPayload,
 ) -> Dict[str, Any]:
