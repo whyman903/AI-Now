@@ -4,6 +4,8 @@
 
 **Live App**: [ai-now.vercel.app](https://ai-now.vercel.app)
 
+![AI-Now Preview](docs/preview.png)
+
 ---
 
 ## Features
