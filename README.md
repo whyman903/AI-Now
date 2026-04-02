@@ -2,6 +2,8 @@
 
 **AI News Aggregator** — Stay up-to-date with the latest AI research, news, and developments from leading labs and organizations.
 
+**Live App**: [ai-now.vercel.app](https://ai-now.vercel.app)
+
 ---
 
 ## Features
