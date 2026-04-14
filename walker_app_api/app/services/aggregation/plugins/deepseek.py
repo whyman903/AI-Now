@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from urllib.parse import urljoin
@@ -38,6 +39,8 @@ GITHUB_PAGE_HEADERS: Dict[str, str] = {
 }
 
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
+GITHUB_ORG_ATOM_URL = "https://github.com/deepseek-ai.atom"
+REPO_KEYWORDS = ("deepseek", "model", "coder", "3fs")
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +80,18 @@ def _extract_repo_identifiers(url: str) -> tuple[str | None, str | None]:
     owner, repo = parts[0], parts[1]
     repo = repo.removesuffix(".git")
     return owner, repo
+
+
+def _is_relevant_repo(name: str) -> bool:
+    return any(keyword in name.lower() for keyword in REPO_KEYWORDS)
+
+
+def _build_repo_result(name: str, url: str, description: str = "") -> Dict[str, str]:
+    return {
+        "title": name.replace("-", " "),
+        "url": url,
+        "description": description,
+    }
 
 
 def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) -> tuple[datetime | None, Dict[str, Any]]:
@@ -145,10 +160,17 @@ def _fetch_readme_metadata(repo_url: str, client: httpx.Client | None = None) ->
 def _fetch_repos_from_github_api() -> List[Dict[str, str]]:
     try:
         with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+            headers = {
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": HEADERS["User-Agent"],
+            }
+            token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GITHUB_API_TOKEN")
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
             response = client.get(
                 "https://api.github.com/users/deepseek-ai/repos",
                 params={"sort": "updated", "per_page": 15},
-                headers={"Accept": "application/vnd.github.v3+json"},
+                headers=headers,
             )
             response.raise_for_status()
             repos = response.json()
@@ -159,19 +181,54 @@ def _fetch_repos_from_github_api() -> List[Dict[str, str]]:
                     continue
 
                 name = repo.get("name", "")
-                if not any(keyword in name.lower() for keyword in ["deepseek", "model", "coder", "3fs"]):
+                if not _is_relevant_repo(name):
                     continue
 
-                results.append({
-                    "title": name.replace("-", " "),
-                    "url": repo["html_url"],
-                    "description": repo.get("description", ""),
-                })
+                results.append(_build_repo_result(
+                    name=name,
+                    url=repo["html_url"],
+                    description=repo.get("description", ""),
+                ))
 
             return results
     except Exception as exc:
         logger.error("Failed to fetch DeepSeek repos from GitHub API: %s", exc)
         return []
+
+
+def _fetch_repos_from_github_atom() -> List[Dict[str, str]]:
+    try:
+        response = httpx.get(
+            GITHUB_ORG_ATOM_URL,
+            headers=GITHUB_PAGE_HEADERS,
+            timeout=15.0,
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        root = ET.fromstring(response.text)
+    except Exception as exc:
+        logger.error("Failed to fetch DeepSeek repos from GitHub Atom feed: %s", exc)
+        return []
+
+    results: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    for entry in root.findall(f"{ATOM_NS}entry"):
+        link = entry.find(f"{ATOM_NS}link[@rel='alternate']")
+        href = link.get("href") if link is not None else None
+        owner, repo = _extract_repo_identifiers(href or "")
+        if owner != "deepseek-ai" or not repo:
+            continue
+
+        repo_key = repo.lower()
+        if repo_key in seen or not _is_relevant_repo(repo):
+            continue
+
+        seen.add(repo_key)
+        results.append(_build_repo_result(name=repo, url=href or "", description=""))
+        if len(results) >= 15:
+            break
+
+    return results
 
 
 @register(
@@ -182,9 +239,15 @@ def _fetch_repos_from_github_api() -> List[Dict[str, str]]:
 )
 def scrape() -> List[Dict[str, Any]]:
     items = _fetch_repos_from_github_api()
+    extraction_method = "github_api"
 
     if not items:
-        logger.warning("DeepSeek scraper: No items found from GitHub API")
+        logger.warning("DeepSeek scraper: GitHub API returned no items; falling back to org Atom feed")
+        items = _fetch_repos_from_github_atom()
+        extraction_method = "github_atom"
+
+    if not items:
+        logger.warning("DeepSeek scraper: No items found from GitHub API or Atom feed")
         return []
 
     normalized: List[Dict[str, Any]] = []
@@ -212,7 +275,7 @@ def scrape() -> List[Dict[str, Any]]:
                     thumbnail_url=THUMBNAIL_URL,
                     item_type="research_lab",
                     source_name="DeepSeek",
-                    extraction_method="github_api",
+                    extraction_method=extraction_method,
                     date_iso=date_iso,
                     date_display=date_display,
                     extra_meta=meta_extra,

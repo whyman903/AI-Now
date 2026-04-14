@@ -2,10 +2,11 @@
 Content aggregation endpoints for triggering and monitoring content collection.
 """
 
+import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -34,12 +35,31 @@ class IngestRequest(BaseModel):
     items: List[IngestItem]
 
 
+def _track_background_task(request: Request, coro: Awaitable[Any]) -> None:
+    task = asyncio.create_task(coro)
+    background_tasks = getattr(request.app.state, "background_tasks", None)
+    if isinstance(background_tasks, set):
+        background_tasks.add(task)
+
+    def _cleanup(done_task: asyncio.Task[Any]) -> None:
+        if isinstance(background_tasks, set):
+            background_tasks.discard(done_task)
+        try:
+            done_task.result()
+        except asyncio.CancelledError:
+            logger.warning("Content aggregation task cancelled")
+        except Exception:
+            logger.exception("Content aggregation task failed")
+
+    task.add_done_callback(_cleanup)
+
+
 @router.post(
     "/trigger",
     dependencies=[Depends(require_aggregation_token)],
 )
 async def trigger_aggregation(
-    background_tasks: BackgroundTasks,
+    request: Request,
     hours_back: int = 24,
     low_memory: bool = Body(False, embed=True),
 ) -> Dict[str, Any]:
@@ -56,10 +76,8 @@ async def trigger_aggregation(
     try:
         aggregator = get_content_aggregator()
         aggregator.configure(low_memory=low_memory)
-        
-        background_tasks.add_task(
-            aggregator.aggregate_all_content
-        )
+
+        _track_background_task(request, aggregator.aggregate_all_content())
         
         logger.info(
             "Content aggregation triggered for last %s hours (low_memory=%s)",

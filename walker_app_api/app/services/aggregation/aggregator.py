@@ -17,6 +17,7 @@ import httpx
 from dateutil import parser as dateparser
 from sqlalchemy import or_
 
+from app.services.aggregation.utils.date_parser import _stable_parse_default
 from app.core.config import settings
 from app.crud.analytics import AnalyticsCRUD
 from app.db.base import SessionLocal
@@ -702,7 +703,7 @@ class ContentAggregator:
                 return None
         if isinstance(value, str):
             try:
-                dt = dateparser.parse(value)
+                dt = dateparser.parse(value, default=_stable_parse_default())
             except Exception:
                 return None
             if not dt:

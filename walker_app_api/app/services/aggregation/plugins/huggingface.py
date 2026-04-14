@@ -1,7 +1,7 @@
 """Hugging Face daily papers scraper plugin."""
 import re
-import zlib
 from datetime import datetime, timezone
+from html import unescape
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
@@ -15,10 +15,7 @@ BASE = "https://huggingface.co"
 TRENDING = f"{BASE}/papers/trending"
 
 ARXIV_PDF_RE = re.compile(r"https?://arxiv\.org/(?:pdf|abs)/(\d{4}\.\d{4,}(?:v\d+)?)")
-GITHUB_URL_RE = re.compile(
-    rb"https?://(?:www\.)?github\.com/[\w\-./%?#=]+",
-    re.IGNORECASE,
-)
+GITHUB_URL_RE = re.compile(r"https?://(?:www\.)?github\.com/[^\s\"'<>]+", re.IGNORECASE)
 
 HEADERS = {
     "User-Agent": (
@@ -80,107 +77,30 @@ def _fetch_text_sync(url: str) -> Optional[str]:
     return None
 
 
-def _resolve_pdf_for_paper_sync(paper_url: str) -> Optional[str]:
+def _find_github_link_from_html(html: str) -> Optional[str]:
+    soup = BeautifulSoup(html, "html.parser")
+
+    for a in soup.find_all("a", href=True):
+        href = (a.get("href") or "").strip()
+        if "github.com/" in href.lower():
+            return _clean_extracted_url(href)
+
+    match = GITHUB_URL_RE.search(unescape(html))
+    if match:
+        return _clean_extracted_url(match.group(0))
+
+    return None
+
+
+def _resolve_links_for_paper_sync(paper_url: str) -> tuple[Optional[str], Optional[str]]:
     html = _fetch_text_sync(paper_url)
     if not html:
-        return None
-    return _find_pdf_link_from_html(html)
+        return None, None
+    return _find_pdf_link_from_html(html), _find_github_link_from_html(html)
 
 
 def _clean_extracted_url(url: str) -> str:
     return url.rstrip(")]>.,;'\"")
-
-
-def _extract_github_from_bytes(blob: bytes) -> Optional[str]:
-    match = GITHUB_URL_RE.search(blob)
-    if not match:
-        return None
-    url_bytes = match.group(0)
-    try:
-        url = url_bytes.decode("utf-8", errors="ignore")
-    except UnicodeDecodeError:
-        return None
-    return _clean_extracted_url(url)
-
-
-def _iter_pdf_streams(pdf_bytes: bytes, max_stream_bytes: int = 1_500_000):
-    stream_marker = b"stream"
-    end_marker = b"endstream"
-    start_idx = 0
-    while True:
-        stream_pos = pdf_bytes.find(stream_marker, start_idx)
-        if stream_pos == -1:
-            break
-        data_start = stream_pos + len(stream_marker)
-        while data_start < len(pdf_bytes) and pdf_bytes[data_start:data_start + 1] in (b"\r", b"\n"):
-            data_start += 1
-        end_pos = pdf_bytes.find(end_marker, data_start)
-        if end_pos == -1:
-            break
-        stream = pdf_bytes[data_start:end_pos]
-        if not stream:
-            start_idx = end_pos + len(end_marker)
-            continue
-        if max_stream_bytes and len(stream) > max_stream_bytes:
-            start_idx = end_pos + len(end_marker)
-            continue
-        yield stream
-        start_idx = end_pos + len(end_marker)
-
-
-def _safe_decompress(stream: bytes, max_output: int = 2_000_000) -> Optional[bytes]:
-    if not stream or len(stream) > max_output * 4:
-        return None
-
-    for wbits in (zlib.MAX_WBITS, -15):
-        try:
-            decompressor = zlib.decompressobj(wbits)
-            remaining = max_output
-            chunks = []
-
-            data = decompressor.decompress(stream, remaining)
-            if data:
-                chunks.append(data)
-                remaining -= len(data)
-
-            while remaining > 0 and decompressor.unconsumed_tail:
-                data = decompressor.decompress(decompressor.unconsumed_tail, remaining)
-                if not data:
-                    break
-                chunks.append(data)
-                remaining -= len(data)
-
-            if chunks:
-                return b"".join(chunks)
-        except zlib.error:
-            continue
-    return None
-
-
-def _extract_github_url_from_pdf(pdf_url: str) -> Optional[str]:
-    try:
-        response = httpx.get(pdf_url, headers=HEADERS, timeout=30.0, follow_redirects=True)
-    except httpx.HTTPError:
-        return None
-
-    if response.status_code != 200 or not response.content:
-        return None
-
-    raw_bytes = response.content
-
-    direct_match = _extract_github_from_bytes(raw_bytes)
-    if direct_match:
-        return direct_match
-
-    for stream in _iter_pdf_streams(raw_bytes):
-        inflated = _safe_decompress(stream)
-        if not inflated:
-            continue
-        match = _extract_github_from_bytes(inflated)
-        if match:
-            return match
-
-    return None
 
 
 @register(
@@ -214,8 +134,7 @@ def scrape(limit: Optional[int] = 15) -> List[Dict[str, Any]]:
             continue
         paper_page_url = urljoin(BASE, href)
 
-        pdf_url = _resolve_pdf_for_paper_sync(paper_page_url)
-        github_url = _extract_github_url_from_pdf(pdf_url) if pdf_url else None
+        pdf_url, github_url = _resolve_links_for_paper_sync(paper_page_url)
         final_url = pdf_url or paper_page_url
 
         thumb_el = article.select_one("img")

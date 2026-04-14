@@ -7,6 +7,18 @@ from typing import Optional, Tuple
 from dateutil import parser as dateparser
 
 
+def _stable_parse_default() -> datetime:
+    """Return a default datetime for dateutil parsing with day=1 and time=midnight.
+
+    dateutil.parser.parse fills missing date/time components from a default
+    (normally datetime.now()).  For month-year-only strings like "April 2026"
+    this causes the day to change every time the parser runs, which in turn
+    makes published_at drift and articles appear perpetually "just published".
+    Using day=1 and midnight keeps the result stable across runs.
+    """
+    return datetime(datetime.now().year, 1, 1, 0, 0, 0)
+
+
 def ensure_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt is None:
         return None
@@ -38,7 +50,7 @@ def parse_date(value: Optional[str | datetime]) -> Optional[datetime]:
         return None
 
     try:
-        parsed = dateparser.parse(text, fuzzy=True)
+        parsed = dateparser.parse(text, fuzzy=True, default=_stable_parse_default())
     except Exception:
         return None
     if not parsed:

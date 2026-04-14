@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
 
 from app.services.aggregation.registry import register
-from app.services.aggregation.utils.date_parser import parse_date
+from app.services.aggregation.utils.date_parser import _stable_parse_default, parse_date
 from app.services.aggregation.utils.html import make_item, normalize_whitespace
 
 BASE = "https://deepmind.google"
@@ -36,7 +36,7 @@ def _parse_date_text(text: str):
     if not disp:
         return None, None
     try:
-        dt = dateparser.parse(disp, fuzzy=True)
+        dt = dateparser.parse(disp, fuzzy=True, default=_stable_parse_default())
         return dt.isoformat(), disp
     except Exception:
         return None, disp
