@@ -137,6 +137,8 @@ dist
 # Gatsby files
 .cache/
 public
+!AI-Now/client/public/
+!AI-Now/client/public/**
 
 # Storybook build outputs
 .out
