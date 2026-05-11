@@ -216,26 +216,28 @@ const TrendingPaperCard = memo(function TrendingPaperCard({ paper, index, isFilt
       contentType: snapshot.type,
       metadata: sanitizeAnalyticsMetadata(snapshot.metadata),
     });
-
-    window.open(snapshot.sourceUrl, "_blank", "noopener,noreferrer");
   }, []);
 
-  const handleGithubClick = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+  const handleGithubClick = useCallback((event: ReactMouseEvent<HTMLAnchorElement>) => {
     event.stopPropagation();
-    const snapshot = snapshotRef.current;
-    const githubUrl = snapshot.metadata?.github_url as string | undefined;
-    if (githubUrl) {
-      window.open(githubUrl, "_blank", "noopener,noreferrer");
-    }
   }, []);
 
   return (
     <div
       ref={registerViewRef as RefCallback<HTMLDivElement>}
-      className="trending-paper-card group cursor-pointer rounded-xl p-2.5 h-20 overflow-hidden bg-gradient-to-br from-blue-50 via-sky-50/50 to-background dark:bg-none dark:bg-blue-950/20 hover:shadow-[0_8px_20px_rgba(153,153,153,0.25)] transition-all duration-300 border-l-4 border-blue-500 dark:border-blue-700"
-      onClick={handleClick}
+      className="trending-paper-card group relative cursor-pointer rounded-xl p-2.5 h-20 overflow-hidden bg-gradient-to-br from-blue-50 via-sky-50/50 to-background dark:bg-none dark:bg-blue-950/20 hover:shadow-[0_8px_20px_rgba(153,153,153,0.25)] transition-all duration-300 border-l-4 border-blue-500 dark:border-blue-700"
     >
-      <div className="flex items-start gap-3">
+      {paper.sourceUrl && (
+        <a
+          href={paper.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${paper.title}`}
+          className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={handleClick}
+        />
+      )}
+      <div className="pointer-events-none relative z-20 flex items-start gap-3">
         <div className="shrink-0 mt-0.5">
           <span className="text-xl font-bold text-blue-600 dark:text-gray-300 font-mono">
             {index + 1}
@@ -251,14 +253,16 @@ const TrendingPaperCard = memo(function TrendingPaperCard({ paper, index, isFilt
               {paper.title}
             </h3>
             {paper.metadata?.github_url && (
-              <button
-                type="button"
+              <a
+                href={paper.metadata.github_url}
+                target="_blank"
+                rel="noopener noreferrer"
                 aria-label="Open associated GitHub repository"
-                className="trending-paper-github-btn shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1 transition-colors bg-blue-200/60 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60"
+                className="trending-paper-github-btn pointer-events-auto shrink-0 inline-flex items-center justify-center rounded-md border border-transparent p-1 transition-colors bg-blue-200/60 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60"
                 onClick={handleGithubClick}
               >
                 <Github className="h-3.5 w-3.5 text-blue-700 dark:text-gray-300" />
-              </button>
+              </a>
             )}
           </div>
           {paper.author && (
@@ -598,8 +602,6 @@ const ArticleCard = memo(function ArticleCard({
       contentType: snapshot.type,
       metadata: sanitizeAnalyticsMetadata(snapshot.metadata),
     });
-
-    window.open(snapshot.sourceUrl, "_blank", "noopener,noreferrer");
   }, []);
 
   const isYouTube = item.type === "youtube_video";
@@ -679,9 +681,21 @@ const ArticleCard = memo(function ArticleCard({
   return (
     <div
       ref={registerViewRef as RefCallback<HTMLDivElement>}
-      className={`group cursor-pointer flex flex-col p-3 ${containerPadding} rounded-2xl w-full h-full ${cardStyleClasses}`}
-      onClick={handleCardClick}
+      className={`group relative cursor-pointer flex flex-col p-3 ${containerPadding} rounded-2xl w-full h-full ${cardStyleClasses}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
+      {item.sourceUrl && (
+        <a
+          href={item.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${item.title}`}
+          className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={handleCardClick}
+        />
+      )}
+
       {/* Subtle accent for AI Trends */}
       {isAiTrends && (
         <div className="ai-trends-accent" />
@@ -689,10 +703,8 @@ const ArticleCard = memo(function ArticleCard({
 
       {!hideImage && (
         <div
-          className="overflow-hidden rounded-lg w-full flex items-center justify-center relative"
-          style={{ height: `${imageHeight}px`, zIndex: 1 }}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          className="pointer-events-none overflow-hidden rounded-lg w-full flex items-center justify-center relative z-20"
+          style={{ height: `${imageHeight}px` }}
         >
           {showYouTubePlayer && youtubeVideoId ? (
             <iframe
@@ -716,7 +728,7 @@ const ArticleCard = memo(function ArticleCard({
         </div>
       )}
 
-      <div className={`flex flex-col justify-start flex-grow overflow-hidden relative ${!hideImage ? "pt-2.5" : ""}`} style={{ zIndex: 1 }}>
+      <div className={`pointer-events-none flex flex-col justify-start flex-grow overflow-hidden relative z-20 ${!hideImage ? "pt-2.5" : ""}`}>
         <div>
           {!isAiTrends && (
             <div className="flex items-center justify-between text-sm text-muted-foreground mb-1.5">
@@ -726,17 +738,18 @@ const ArticleCard = memo(function ArticleCard({
               </div>
               <div className="flex items-center gap-2">
                 {githubUrl && (
-                  <button
-                    type="button"
+                  <a
+                    href={githubUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     aria-label="Open associated GitHub repository"
-                    className="inline-flex items-center justify-center rounded-md border border-transparent bg-muted text-foreground hover:bg-muted/80 transition-colors p-1"
+                    className="pointer-events-auto inline-flex items-center justify-center rounded-md border border-transparent bg-muted text-foreground hover:bg-muted/80 transition-colors p-1"
                     onClick={(event) => {
                       event.stopPropagation();
-                      window.open(githubUrl, "_blank", "noopener,noreferrer");
                     }}
                   >
                     <Github className="h-4 w-4" />
-                  </button>
+                  </a>
                 )}
                 {item.metadata?.source_name === "Hugging Face Papers" && (
                   <Badge variant="outline" className="text-xs px-2 py-0 h-5 flex items-center gap-1">
@@ -766,6 +779,7 @@ const ArticleCard = memo(function ArticleCard({
                       {...props}
                       target="_blank"
                       rel="noopener noreferrer"
+                      className="pointer-events-auto"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ),
